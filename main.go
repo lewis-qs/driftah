@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+var version = "dev"
+
 type options struct {
 	platform, format, title string
 	prefixes, ignore        []string
@@ -15,6 +17,7 @@ type options struct {
 }
 
 func main() {
+	showVersion := flag.Bool("version", false, "print version and exit")
 	format := flag.String("format", "markdown", "output format: markdown or json")
 	platform := flag.String("platform", "linux/amd64", "platform to inspect for multi-arch images")
 	title := flag.String("title", "", "optional H1 title for markdown output")
@@ -28,6 +31,10 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("driftah", version)
+		return
+	}
 	if flag.NArg() != 2 {
 		flag.Usage()
 		os.Exit(2)
