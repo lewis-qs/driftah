@@ -28,3 +28,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-just
       - run: just check
+
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-just
+      - run: just integration

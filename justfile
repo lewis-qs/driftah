@@ -52,6 +52,11 @@ lint:
 vuln:
     just run {{ go_image }} go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
+# integration test: pull real images and diff them end to end
+[group('ci')]
+integration:
+    just run {{ go_image }} go test -tags integration -run TestIntegration -v ./...
+
 # fmt-check + lint + vuln + test (lint's govet covers vet)
 [group('ci')]
 check: fmt-check lint vuln test
