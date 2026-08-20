@@ -2,12 +2,15 @@ package main
 
 import (
 	"archive/tar"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -33,6 +36,13 @@ func (p Pkg) EVR() string {
 
 func (p Pkg) key() string { return p.Name + "." + p.Arch }
 
+func (p Pkg) nevraKey() string { return p.Name + "." + p.Arch + "-" + p.EVR() }
+
+type imageData struct {
+	pkgs  map[string]Pkg
+	files map[string]string // path under a tracked prefix -> content identity
+}
+
 var (
 	rpmDBDirs      = []string{"usr/lib/sysimage/rpm", "usr/share/rpm", "var/lib/rpm"}
 	rpmDBMainFiles = []string{"rpmdb.sqlite", "Packages", "Packages.db"}
@@ -40,62 +50,37 @@ var (
 
 const sqliteMagic = "SQLite format 3\x00"
 
-func packagesFromImage(ref, platformStr string) (map[string]Pkg, error) {
+// readImage flattens the image once and returns its package set plus a
+// content-identity map for files under the tracked prefixes. In ostree/bootc
+// images most files are tar hardlinks into the content-addressed ostree object
+// store, so the hardlink target is a stable content identity for free; regular
+// files are hashed. The rpm database is found the same way: buffer any file with
+// the sqlite magic (plus any directly-named db file), then resolve the preferred
+// db path through its hardlink. ponytail: streams the whole flattened tar once;
+// add a per-layer scan only if this is measurably too slow on large images.
+func readImage(ref, platformStr string, prefixes []string) (*imageData, error) {
 	plat, err := v1.ParsePlatform(platformStr)
 	if err != nil {
 		return nil, err
 	}
 	img, err := crane.Pull(ref, crane.WithPlatform(plat))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pull: %w", err)
 	}
-	dbPath, dir, err := extractRPMDB(img)
+
+	dir, err := os.MkdirTemp("", "driftah-")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
 
-	db, err := rpmdb.Open(dbPath)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-	list, err := db.ListPackages()
-	if err != nil {
-		return nil, err
-	}
-	pkgs := make(map[string]Pkg, len(list))
-	for _, p := range list {
-		if p.Name == "gpg-pubkey" {
-			continue
-		}
-		epoch := ""
-		if p.Epoch != nil {
-			epoch = fmt.Sprintf("%d", *p.Epoch)
-		}
-		pk := Pkg{Name: p.Name, Epoch: epoch, Version: p.Version, Release: p.Release, Arch: p.Arch}
-		pkgs[pk.key()] = pk
-	}
-	return pkgs, nil
-}
-
-// extractRPMDB flattens the image and returns the path to the extracted rpm
-// database file, preferring the authoritative current db. In ostree/bootc
-// images the real content lives in the ostree object store under a content-hash
-// name and the db paths are tar hardlinks into it, so buffer any file with the
-// sqlite magic (plus any directly-named db file) and resolve the preferred path
-// through its hardlink. ponytail: streams the whole flattened tar to grab a
-// small db; add a per-layer reverse scan only if this is measurably too slow.
-func extractRPMDB(img v1.Image) (dbFile, tmpDir string, err error) {
-	dir, err := os.MkdirTemp("", "rpmdrift-")
-	if err != nil {
-		return "", "", err
-	}
-	reg := map[string]string{}  // clean archive path -> buffered temp file
-	link := map[string]string{} // clean archive path -> clean hardlink target
+	reg := map[string]string{}   // clean archive path -> buffered temp db file
+	link := map[string]string{}  // clean archive path -> clean hardlink target
+	files := map[string]string{} // tracked-prefix path -> content identity
 	seq := 0
 
 	pr, pw := io.Pipe()
+	defer pr.Close()
 	go func() { pw.CloseWithError(crane.Export(img, pw)) }()
 	tr := tar.NewReader(pr)
 	for {
@@ -104,48 +89,67 @@ func extractRPMDB(img v1.Image) (dbFile, tmpDir string, err error) {
 			break
 		}
 		if err != nil {
-			os.RemoveAll(dir)
-			return "", "", err
+			return nil, fmt.Errorf("export stream: %w", err)
 		}
 		clean := path.Clean(hdr.Name)
 		isMain := slices.Contains(rpmDBMainFiles, path.Base(clean))
+		tracked := hasAnyPrefix(clean, prefixes)
 
-		if hdr.Typeflag == tar.TypeLink && isMain {
-			link[clean] = path.Clean(hdr.Linkname)
-			continue
+		switch hdr.Typeflag {
+		case tar.TypeLink:
+			if isMain {
+				link[clean] = path.Clean(hdr.Linkname)
+			}
+			if tracked {
+				files[clean] = "L:" + path.Clean(hdr.Linkname)
+			}
+		case tar.TypeSymlink:
+			if tracked {
+				files[clean] = "S:" + hdr.Linkname
+			}
+		case tar.TypeReg:
+			var head [16]byte
+			n, rerr := io.ReadFull(tr, head[:])
+			if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
+				return nil, fmt.Errorf("read %s: %w", clean, rerr)
+			}
+			isSqlite := n >= len(sqliteMagic) && string(head[:len(sqliteMagic)]) == sqliteMagic
+			needBuffer := isMain || isSqlite
+			if !needBuffer && !tracked {
+				continue
+			}
+			h := sha256.New()
+			var out *os.File
+			var ws []io.Writer
+			if tracked {
+				ws = append(ws, h)
+			}
+			if needBuffer {
+				tmp := filepath.Join(dir, fmt.Sprintf("db%d", seq))
+				seq++
+				f, cerr := os.Create(tmp)
+				if cerr != nil {
+					return nil, cerr
+				}
+				out = f
+				ws = append(ws, out)
+				reg[clean] = tmp
+			}
+			mw := io.MultiWriter(ws...)
+			_, werr := mw.Write(head[:n])
+			if werr == nil {
+				_, werr = io.Copy(mw, tr)
+			}
+			if out != nil {
+				out.Close()
+			}
+			if werr != nil {
+				return nil, fmt.Errorf("copy %s: %w", clean, werr)
+			}
+			if tracked {
+				files[clean] = "H:" + hex.EncodeToString(h.Sum(nil))
+			}
 		}
-		if hdr.Typeflag != tar.TypeReg {
-			continue
-		}
-
-		var head [16]byte
-		n, err := io.ReadFull(tr, head[:])
-		if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
-			os.RemoveAll(dir)
-			return "", "", err
-		}
-		if !isMain && string(head[:n]) != sqliteMagic {
-			continue
-		}
-		tmp := filepath.Join(dir, fmt.Sprintf("db%d", seq))
-		seq++
-		out, err := os.Create(tmp)
-		if err != nil {
-			os.RemoveAll(dir)
-			return "", "", err
-		}
-		if _, err := out.Write(head[:n]); err != nil {
-			out.Close()
-			os.RemoveAll(dir)
-			return "", "", err
-		}
-		if _, err := io.Copy(out, tr); err != nil {
-			out.Close()
-			os.RemoveAll(dir)
-			return "", "", err
-		}
-		out.Close()
-		reg[clean] = tmp
 	}
 
 	var resolve func(p string, depth int) string
@@ -161,13 +165,51 @@ func extractRPMDB(img v1.Image) (dbFile, tmpDir string, err error) {
 		}
 		return ""
 	}
+	dbPath := ""
 	for _, d := range rpmDBDirs {
 		for _, f := range rpmDBMainFiles {
 			if t := resolve(d+"/"+f, 0); t != "" {
-				return t, dir, nil
+				dbPath = t
+				break
 			}
 		}
+		if dbPath != "" {
+			break
+		}
 	}
-	os.RemoveAll(dir)
-	return "", "", fmt.Errorf("no rpm database found in image")
+	if dbPath == "" {
+		return nil, fmt.Errorf("no rpm database found in image")
+	}
+
+	db, err := rpmdb.Open(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open db: %w", err)
+	}
+	defer db.Close()
+	list, err := db.ListPackages()
+	if err != nil {
+		return nil, fmt.Errorf("list packages: %w", err)
+	}
+	pkgs := make(map[string]Pkg, len(list))
+	for _, p := range list {
+		if p.Name == "gpg-pubkey" {
+			continue
+		}
+		epoch := ""
+		if p.Epoch != nil {
+			epoch = fmt.Sprintf("%d", *p.Epoch)
+		}
+		pk := Pkg{Name: p.Name, Epoch: epoch, Version: p.Version, Release: p.Release, Arch: p.Arch}
+		pkgs[pk.nevraKey()] = pk
+	}
+	return &imageData{pkgs: pkgs, files: files}, nil
+}
+
+func hasAnyPrefix(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
 }

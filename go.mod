@@ -1,4 +1,4 @@
-module github.com/lewis-qs/rpmdrift
+module github.com/lewis-qs/driftah
 
 go 1.26
 

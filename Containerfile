@@ -3,10 +3,10 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /rpmdrift .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /driftah .
 
 FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=build /rpmdrift /rpmdrift
+COPY --from=build /driftah /driftah
 WORKDIR /tmp
-ENTRYPOINT ["/rpmdrift"]
+ENTRYPOINT ["/driftah"]

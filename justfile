@@ -1,11 +1,11 @@
 set shell := ["bash", "-euc"]
 
-oci_image := env_var_or_default("IMAGE", "ghcr.io/lewis-qs/rpmdrift")
+oci_image := env_var_or_default("IMAGE", "ghcr.io/lewis-qs/driftah")
 
 # build the static binary
 [group('dev')]
 build:
-    CGO_ENABLED=0 go build -ldflags="-s -w" -o rpmdrift .
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o driftah .
 
 # run the unit tests
 [group('dev')]

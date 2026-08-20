@@ -6,15 +6,16 @@ import (
 	"strings"
 )
 
-func renderMarkdown(d Diff, title, fromRef, toRef string) string {
+func renderMarkdown(rep Report, title, fromRef, toRef string) string {
 	var b strings.Builder
 	if title != "" {
 		fmt.Fprintf(&b, "# %s\n\n", title)
 	}
 	fmt.Fprintf(&b, "**From:** `%s`  \n**To:** `%s`\n\n", fromRef, toRef)
 
-	if d.empty() {
-		b.WriteString("No package changes.\n")
+	d := rep.Packages
+	if d.empty() && rep.Files.empty() {
+		b.WriteString("No changes.\n")
 		return b.String()
 	}
 
@@ -39,11 +40,28 @@ func renderMarkdown(d Diff, title, fromRef, toRef string) string {
 		}
 		b.WriteString("\n")
 	}
+
+	for _, g := range rep.Files.Groups {
+		fileSection(&b, "/"+strings.TrimSuffix(g.Prefix, "/"), g.Changes)
+	}
 	return b.String()
 }
 
-func renderJSON(d Diff) (string, error) {
-	out, err := json.MarshalIndent(d, "", "  ")
+var statusMark = map[string]string{"added": "A", "modified": "M", "removed": "R"}
+
+func fileSection(b *strings.Builder, title string, changes []FileChange) {
+	if len(changes) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "### Changed files in %s (%d)\n\n", title, len(changes))
+	for _, c := range changes {
+		fmt.Fprintf(b, "- `%s` %s\n", statusMark[c.Status], c.Path)
+	}
+	b.WriteString("\n")
+}
+
+func renderJSON(rep Report) (string, error) {
+	out, err := json.MarshalIndent(rep, "", "  ")
 	if err != nil {
 		return "", err
 	}
