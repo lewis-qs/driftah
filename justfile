@@ -21,7 +21,7 @@ run image +args:
 # build the static binary in the pinned toolchain
 [group('dev')]
 build:
-    just run {{ go_image }} go build -trimpath -ldflags="{{ ldflags }}" -o driftah .
+    podman run --rm -v "{{ root }}:/src:z" -w /src -e CGO_ENABLED=0 {{ go_image }} go build -trimpath -ldflags="{{ ldflags }}" -o driftah .
 
 # run the unit tests
 [group('dev')]
@@ -73,6 +73,19 @@ commitlint from to:
 [group('dev')]
 diff from to *args:
     go run . {{ args }} "{{ from }}" "{{ to }}"
+
+# cross-compile static release binaries into dist/ with the given version
+[group('release')]
+binaries version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p dist
+    for arch in amd64 arm64; do
+        podman run --rm -v "{{ root }}:/src:z" -w /src \
+            -e CGO_ENABLED=0 -e GOOS=linux -e "GOARCH=$arch" \
+            {{ go_image }} go build -trimpath -ldflags="-s -w -X main.version={{ version }}" -o "dist/driftah-linux-$arch" .
+    done
+    ( cd dist && sha256sum driftah-linux-* > checksums.txt )
 
 # build the container image for one arch
 [group('deploy')]
