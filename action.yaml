@@ -1,0 +1,54 @@
+name: driftah
+description: Diff two OCI images and produce package + file release notes.
+
+inputs:
+  from:
+    description: Old image reference.
+    required: true
+  to:
+    description: New image reference.
+    required: true
+  image:
+    description: driftah container image to run.
+    required: false
+    default: ghcr.io/lewis-qs/driftah:latest
+  args:
+    description: Extra driftah flags, e.g. "--paths etc/,usr/lib --ignore-packages kernel".
+    required: false
+    default: ""
+  output-file:
+    description: If set, also write the markdown notes to this path.
+    required: false
+    default: ""
+
+outputs:
+  notes:
+    description: The generated markdown release notes.
+    value: ${{ steps.run.outputs.notes }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        DRIFTAH_IMAGE: ${{ inputs.image }}
+        FROM: ${{ inputs.from }}
+        TO: ${{ inputs.to }}
+        ARGS: ${{ inputs.args }}
+        OUTPUT_FILE: ${{ inputs.output-file }}
+      run: |
+        set -euo pipefail
+        auth=""
+        for c in "${REGISTRY_AUTH_FILE:-}" "${XDG_RUNTIME_DIR:-}/containers/auth.json" "$HOME/.docker/config.json"; do
+          if [ -n "$c" ] && [ -f "$c" ]; then auth="$c"; break; fi
+        done
+        mount=()
+        [ -n "$auth" ] && mount=(-v "$auth:/tmp/auth.json:ro" -e REGISTRY_AUTH_FILE=/tmp/auth.json)
+        notes="$(podman run --rm "${mount[@]}" "$DRIFTAH_IMAGE" $ARGS "$FROM" "$TO")"
+        [ -n "$OUTPUT_FILE" ] && printf '%s\n' "$notes" > "$OUTPUT_FILE"
+        {
+          echo "notes<<DRIFTAH_EOF"
+          printf '%s\n' "$notes"
+          echo "DRIFTAH_EOF"
+        } >> "$GITHUB_OUTPUT"

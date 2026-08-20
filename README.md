@@ -55,6 +55,23 @@ podman run --rm \
   ghcr.io/lewis-qs/driftah <from> <to>
 ```
 
+### As a GitHub Action
+
+Consume it in a release workflow to generate the notes between two images:
+
+```yaml
+- uses: lewis-qs/driftah@v1
+  id: notes
+  with:
+    from: ghcr.io/lewis-qs/bootc/almalinux:10.2-20260819
+    to: ghcr.io/lewis-qs/bootc/almalinux:10.2-20260820
+    args: --ignore-packages kernel
+    output-file: notes.md
+- run: gh release create "$VERSION" --notes-file notes.md
+```
+
+The generated markdown is also exposed as `${{ steps.notes.outputs.notes }}`.
+
 ### Example output
 
 ```markdown
