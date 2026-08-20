@@ -32,7 +32,7 @@ func diff(from, to map[string]Pkg) Diff {
 		keys[k] = true
 	}
 
-	var d Diff
+	d := Diff{Added: []Pkg{}, Removed: []Pkg{}, Updated: []Update{}}
 	for k := range keys {
 		fs, ts := fromNA[k], toNA[k]
 		if len(fs) == 1 && len(ts) == 1 {

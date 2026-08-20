@@ -47,6 +47,17 @@ func TestDiffInstallonly(t *testing.T) {
 	}
 }
 
+func TestMdCode(t *testing.T) {
+	// a markdown-link-shaped path must render as literal code, not a link
+	if got := mdCode("][evil](https://x)"); got != "`][evil](https://x)`" {
+		t.Errorf("mdCode = %q", got)
+	}
+	// an embedded backtick must not close the span early
+	if got := mdCode("a`b"); got != "`a'b`" {
+		t.Errorf("mdCode backtick = %q", got)
+	}
+}
+
 func TestMatchFamily(t *testing.T) {
 	fams := []string{"kernel"}
 	for _, n := range []string{"kernel", "kernel-core", "kernel-modules-extra"} {

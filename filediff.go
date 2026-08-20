@@ -42,7 +42,7 @@ func fileDiff(from, to map[string]string, prefixes []string) FileDiff {
 		}
 	}
 
-	var fd FileDiff
+	fd := FileDiff{Groups: []FileGroup{}}
 	for _, pre := range prefixes {
 		cs := byPrefix[pre]
 		if len(cs) == 0 {

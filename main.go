@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -95,14 +96,14 @@ func run(fromRef, toRef string, o options) error {
 		Files:    fileDiff(from.files, to.files, o.prefixes),
 	}
 	switch o.format {
-	case "markdown", "md":
+	case "markdown":
 		fmt.Print(renderMarkdown(rep, o.title, fromRef, toRef))
 	case "json":
-		out, err := renderJSON(rep)
+		out, err := json.MarshalIndent(rep, "", "  ")
 		if err != nil {
 			return err
 		}
-		fmt.Println(out)
+		fmt.Println(string(out))
 	default:
 		return fmt.Errorf("unknown format %q (want markdown or json)", o.format)
 	}
