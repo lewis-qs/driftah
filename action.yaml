@@ -9,15 +9,11 @@ inputs:
     description: New image reference.
     required: true
   image:
-    description: driftah container image to run.
+    description: driftah container image to run (pin to a digest for a trusted supply chain).
     required: false
     default: ghcr.io/lewis-qs/driftah:latest
   args:
     description: Extra driftah flags, e.g. "--paths etc/,usr/lib --ignore-packages kernel".
-    required: false
-    default: ""
-  output-file:
-    description: If set, also write the markdown notes to this path.
     required: false
     default: ""
 
@@ -36,19 +32,21 @@ runs:
         FROM: ${{ inputs.from }}
         TO: ${{ inputs.to }}
         ARGS: ${{ inputs.args }}
-        OUTPUT_FILE: ${{ inputs.output-file }}
       run: |
         set -euo pipefail
         auth=""
-        for c in "${REGISTRY_AUTH_FILE:-}" "${XDG_RUNTIME_DIR:-}/containers/auth.json" "$HOME/.docker/config.json"; do
-          if [ -n "$c" ] && [ -f "$c" ]; then auth="$c"; break; fi
-        done
+        if [ -n "${REGISTRY_AUTH_FILE:-}" ] && [ -f "${REGISTRY_AUTH_FILE}" ]; then
+          auth="${REGISTRY_AUTH_FILE}"
+        elif [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -f "${XDG_RUNTIME_DIR}/containers/auth.json" ]; then
+          auth="${XDG_RUNTIME_DIR}/containers/auth.json"
+        fi
         mount=()
         [ -n "$auth" ] && mount=(-v "$auth:/tmp/auth.json:ro" -e REGISTRY_AUTH_FILE=/tmp/auth.json)
         notes="$(podman run --rm "${mount[@]}" "$DRIFTAH_IMAGE" $ARGS "$FROM" "$TO")"
-        [ -n "$OUTPUT_FILE" ] && printf '%s\n' "$notes" > "$OUTPUT_FILE"
+        delim="driftah_$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+        case "$notes" in *"$delim"*) echo "::error::notes delimiter collision"; exit 1;; esac
         {
-          echo "notes<<DRIFTAH_EOF"
+          echo "notes<<$delim"
           printf '%s\n' "$notes"
-          echo "DRIFTAH_EOF"
+          echo "$delim"
         } >> "$GITHUB_OUTPUT"

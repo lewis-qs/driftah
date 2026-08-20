@@ -1,17 +1,22 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 )
+
+// mdCode wraps a value in an inline code span and neutralises any backtick, so
+// image-derived strings (package names, file paths) can't inject markdown.
+func mdCode(s string) string {
+	return "`" + strings.ReplaceAll(s, "`", "'") + "`"
+}
 
 func renderMarkdown(rep Report, title, fromRef, toRef string) string {
 	var b strings.Builder
 	if title != "" {
 		fmt.Fprintf(&b, "# %s\n\n", title)
 	}
-	fmt.Fprintf(&b, "**From:** `%s`  \n**To:** `%s`\n\n", fromRef, toRef)
+	fmt.Fprintf(&b, "**From:** %s  \n**To:** %s\n\n", mdCode(fromRef), mdCode(toRef))
 
 	d := rep.Packages
 	if d.empty() && rep.Files.empty() {
@@ -22,7 +27,7 @@ func renderMarkdown(rep Report, title, fromRef, toRef string) string {
 	if len(d.Updated) > 0 {
 		fmt.Fprintf(&b, "### Updated packages (%d)\n\n", len(d.Updated))
 		for _, u := range d.Updated {
-			fmt.Fprintf(&b, "- **%s** `%s` → `%s`\n", u.Name, u.From, u.To)
+			fmt.Fprintf(&b, "- **%s** %s → %s\n", mdCode(u.Name), mdCode(u.From), mdCode(u.To))
 		}
 		b.WriteString("\n")
 	}
@@ -41,7 +46,7 @@ func pkgSection(b *strings.Builder, title string, pkgs []Pkg) {
 	}
 	fmt.Fprintf(b, "### %s (%d)\n\n", title, len(pkgs))
 	for _, p := range pkgs {
-		fmt.Fprintf(b, "- %s `%s`\n", p.Name, p.EVR())
+		fmt.Fprintf(b, "- %s %s\n", mdCode(p.Name), mdCode(p.EVR()))
 	}
 	b.WriteString("\n")
 }
@@ -54,12 +59,7 @@ func fileSection(b *strings.Builder, title string, changes []FileChange) {
 	}
 	fmt.Fprintf(b, "### Changed files in %s (%d)\n\n", title, len(changes))
 	for _, c := range changes {
-		fmt.Fprintf(b, "- `%s` %s\n", statusMark[c.Status], c.Path)
+		fmt.Fprintf(b, "- `%s` %s\n", statusMark[c.Status], mdCode(c.Path))
 	}
 	b.WriteString("\n")
-}
-
-func renderJSON(rep Report) (string, error) {
-	out, err := json.MarshalIndent(rep, "", "  ")
-	return string(out), err
 }
