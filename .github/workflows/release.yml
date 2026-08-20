@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: write
+  issues: write
+  pull-requests: write
+
+env:
+  IMAGE: ghcr.io/lewis-qs/driftah
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      published: ${{ steps.release.outputs.published }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm install --no-save semantic-release@24 @semantic-release/github@10 conventional-changelog-conventionalcommits@7
+          npx semantic-release
+          ver="$(git tag --points-at HEAD | sed -n 's/^v//p' | head -1)"
+          if [ -n "$ver" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "version=$ver" >> "$GITHUB_OUTPUT"
+            echo "released $ver"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "no release"
+          fi
+
+  image:
+    needs: version
+    if: ${{ needs.version.outputs.published == 'true' }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    env:
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_ACTOR: ${{ github.repository_owner }}
+      VERSION: ${{ needs.version.outputs.version }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-just
+      - run: echo "$GHCR_TOKEN" | podman login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - run: |
+          just oci "${VERSION}-${ARCH}" "${ARCH}"
+          podman push "${IMAGE}:${VERSION}-${ARCH}"
+
+  manifest:
+    needs: [version, image]
+    if: ${{ needs.version.outputs.published == 'true' }}
+    runs-on: ubuntu-24.04
+    env:
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_ACTOR: ${{ github.repository_owner }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - run: echo "$GHCR_TOKEN" | podman login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - run: |
+          for tag in "$VERSION" latest; do
+            podman manifest create m
+            podman manifest add m "docker://${IMAGE}:${VERSION}-amd64"
+            podman manifest add m "docker://${IMAGE}:${VERSION}-arm64"
+            podman manifest push --all m "docker://${IMAGE}:${tag}"
+            podman manifest rm m
+          done

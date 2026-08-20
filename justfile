@@ -2,7 +2,7 @@ set shell := ["bash", "-euc"]
 set dotenv-load := false
 
 root      := justfile_directory()
-version   := `git describe --tags --always --dirty 2>/dev/null || echo dev`
+version   := env_var_or_default("VERSION", `git describe --tags --always --dirty 2>/dev/null || echo dev`)
 ldflags   := "-s -w -X main.version=" + version
 go_image  := env_var_or_default("GO_IMAGE", "docker.io/library/golang:1.26")
 oci_image := env_var_or_default("IMAGE", "ghcr.io/lewis-qs/driftah")
