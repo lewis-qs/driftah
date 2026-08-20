@@ -8,12 +8,15 @@ layers — no `podman run`, no rpm-ostree, no ostree tooling. It reports:
 
 - **Packages** added, updated, or removed (from the rpm database).
 - **Files** added, modified, or removed under configurable path prefixes
-  (git-style `A` / `M` / `R`), using content identity — so a rebuild that ships
-  the same packages but different files is still caught.
+  (git-style `A` / `M` / `R`) — so a rebuild that ships the same packages but
+  different files is still caught.
 
-Because it reads the rpm database and content hashes rather than the on-disk
-layout, it works the same for conventional images and for ostree/bootc images
-where content lives in the ostree object store.
+It works for both conventional images and ostree/bootc images (where content
+lives in the ostree object store). File identity is a per-file signal: a sha256
+of the content for regular files, and the ostree object identity for ostree
+hardlinks. The ostree identity also reflects file metadata (mode, ownership,
+xattrs), so on ostree images a metadata-only change is reported as modified,
+whereas on conventional images identity is content-only.
 
 ## Usage
 
@@ -60,17 +63,19 @@ podman run --rm \
 Consume it in a release workflow to generate the notes between two images:
 
 ```yaml
-- uses: lewis-qs/driftah@v1
+- uses: lewis-qs/driftah@v1        # pin @<sha>, and image:@sha256:… for a trusted supply chain
   id: notes
   with:
     from: ghcr.io/lewis-qs/bootc/almalinux:10.2-20260819
     to: ghcr.io/lewis-qs/bootc/almalinux:10.2-20260820
     args: --ignore-packages kernel
-    output-file: notes.md
-- run: gh release create "$VERSION" --notes-file notes.md
+- env:
+    NOTES: ${{ steps.notes.outputs.notes }}
+  run: gh release create "$VERSION" --notes "$NOTES"
 ```
 
-The generated markdown is also exposed as `${{ steps.notes.outputs.notes }}`.
+The markdown is exposed as the `notes` output; pass it through `env:` (as above)
+rather than interpolating it into a `run:` line.
 
 ### Example output
 

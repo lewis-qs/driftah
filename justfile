@@ -23,21 +23,11 @@ run image +args:
 build:
     just run {{ go_image }} go build -trimpath -ldflags="{{ ldflags }}" -o driftah .
 
-# build with the host Go toolchain
-[group('dev')]
-build-local:
-    CGO_ENABLED=0 go build -trimpath -ldflags="{{ ldflags }}" -o driftah .
-
 # run the unit tests
 [group('dev')]
 [group('ci')]
 test:
     just run {{ go_image }} go test ./...
-
-# go vet
-[group('ci')]
-vet:
-    just run {{ go_image }} go vet ./...
 
 # format the source
 [group('dev')]
@@ -62,16 +52,16 @@ lint:
 vuln:
     just run {{ go_image }} go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
-# fmt-check + vet + lint + vuln + test
+# fmt-check + lint + vuln + test (lint's govet covers vet)
 [group('ci')]
-check: fmt-check vet lint vuln test
+check: fmt-check lint vuln test
 
 # lint commit messages in a range (CI passes the PR base/head shas)
 [group('ci')]
 commitlint from to:
     #!/usr/bin/env bash
     set -euo pipefail
-    npm install --no-save @commitlint/cli @commitlint/config-conventional
+    npm ci
     npx commitlint --from "{{ from }}" --to "{{ to }}" --verbose
 
 # diff two images from source (e.g. just diff <from> <to> --format json)
@@ -94,17 +84,18 @@ ghcr-login:
 semver:
     #!/usr/bin/env bash
     set -euo pipefail
-    npm install --no-save semantic-release@24 @semantic-release/github@10 conventional-changelog-conventionalcommits@7
+    rm -f .driftah-released
+    npm ci
     npx semantic-release
-    ver="$(git tag --points-at HEAD | sed -n 's/^v//p' | head -1)"
     out="${GITHUB_OUTPUT:-/dev/stdout}"
-    if [ -n "$ver" ]; then
-        { echo "published=true"; echo "version=$ver"; } >> "$out"
-        echo "released $ver"
+    if [ -f .driftah-released ]; then
+        { echo "published=true"; echo "version=$(cat .driftah-released)"; } >> "$out"
+        echo "released $(cat .driftah-released)"
     else
         echo "published=false" >> "$out"
         echo "no release"
     fi
+    rm -f .driftah-released
 
 # build and push the image for one arch, tagged <version>-<arch>
 [group('release')]
@@ -117,13 +108,13 @@ image-release version arch:
 manifest-release version:
     #!/usr/bin/env bash
     set -euo pipefail
+    podman manifest create m
+    podman manifest add m "docker://{{ oci_image }}:{{ version }}-amd64"
+    podman manifest add m "docker://{{ oci_image }}:{{ version }}-arm64"
     for tag in "{{ version }}" latest; do
-        podman manifest create m
-        podman manifest add m "docker://{{ oci_image }}:{{ version }}-amd64"
-        podman manifest add m "docker://{{ oci_image }}:{{ version }}-arm64"
         podman manifest push --all m "docker://{{ oci_image }}:${tag}"
-        podman manifest rm m
     done
+    podman manifest rm m
 
 # remove build artefacts
 [group('dev')]

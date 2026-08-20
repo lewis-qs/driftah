@@ -1,0 +1,13 @@
+{
+  "name": "driftah-ci",
+  "private": true,
+  "description": "Pinned CI toolchain (semantic-release + commitlint) for driftah.",
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/github": "^12.0.9",
+    "conventional-changelog-conventionalcommits": "^10.4.0",
+    "semantic-release": "^25.0.9"
+  }
+}
