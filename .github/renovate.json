@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "dependencyDashboard": true,
+  "enabledManagers": ["gomod", "github-actions", "dockerfile"],
+  "packageRules": [
+    {
+      "description": "Containerfile base images: pin to immutable digests.",
+      "matchManagers": ["dockerfile"],
+      "pinDigests": true
+    },
+    {
+      "description": "Automerge low-risk bumps once CI passes; major stays a review PR.",
+      "matchUpdateTypes": ["digest", "pin", "patch", "minor"],
+      "automerge": true
+    }
+  ]
+}

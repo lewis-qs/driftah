@@ -4,8 +4,9 @@ set dotenv-load := false
 root      := justfile_directory()
 version   := env_var_or_default("VERSION", `git describe --tags --always --dirty 2>/dev/null || echo dev`)
 ldflags   := "-s -w -X main.version=" + version
-go_image  := env_var_or_default("GO_IMAGE", "docker.io/library/golang:1.26")
-oci_image := env_var_or_default("IMAGE", "ghcr.io/lewis-qs/driftah")
+go_image   := env_var_or_default("GO_IMAGE", "docker.io/library/golang:1.26")
+lint_image := env_var_or_default("LINT_IMAGE", "docker.io/golangci/golangci-lint:latest")
+oci_image  := env_var_or_default("IMAGE", "ghcr.io/lewis-qs/driftah")
 
 host_arch   := if arch() == "aarch64" { "arm64" } else if arch() == "x86_64" { "amd64" } else { arch() }
 target_arch := env_var_or_default("ARCH", host_arch)
@@ -43,9 +44,27 @@ vet:
 fmt:
     just run {{ go_image }} gofmt -l -w .
 
-# vet + test
+# fail if any file needs formatting
 [group('ci')]
-check: vet test
+fmt-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out="$(just run {{ go_image }} gofmt -l .)"
+    [ -z "$out" ] || { echo "unformatted:"; echo "$out"; exit 1; }
+
+# golangci-lint
+[group('ci')]
+lint:
+    podman run --rm -v "{{ root }}:/src:z" -w /src {{ lint_image }} golangci-lint run ./...
+
+# govulncheck
+[group('ci')]
+vuln:
+    just run {{ go_image }} go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+# fmt-check + vet + lint + vuln + test
+[group('ci')]
+check: fmt-check vet lint vuln test
 
 # lint commit messages in a range (CI passes the PR base/head shas)
 [group('ci')]
