@@ -26,25 +26,24 @@ func renderMarkdown(rep Report, title, fromRef, toRef string) string {
 		}
 		b.WriteString("\n")
 	}
-	if len(d.Added) > 0 {
-		fmt.Fprintf(&b, "### Added packages (%d)\n\n", len(d.Added))
-		for _, p := range d.Added {
-			fmt.Fprintf(&b, "- %s `%s`\n", p.Name, p.EVR())
-		}
-		b.WriteString("\n")
-	}
-	if len(d.Removed) > 0 {
-		fmt.Fprintf(&b, "### Removed packages (%d)\n\n", len(d.Removed))
-		for _, p := range d.Removed {
-			fmt.Fprintf(&b, "- %s `%s`\n", p.Name, p.EVR())
-		}
-		b.WriteString("\n")
-	}
+	pkgSection(&b, "Added packages", d.Added)
+	pkgSection(&b, "Removed packages", d.Removed)
 
 	for _, g := range rep.Files.Groups {
 		fileSection(&b, "/"+strings.TrimSuffix(g.Prefix, "/"), g.Changes)
 	}
 	return b.String()
+}
+
+func pkgSection(b *strings.Builder, title string, pkgs []Pkg) {
+	if len(pkgs) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "### %s (%d)\n\n", title, len(pkgs))
+	for _, p := range pkgs {
+		fmt.Fprintf(b, "- %s `%s`\n", p.Name, p.EVR())
+	}
+	b.WriteString("\n")
 }
 
 var statusMark = map[string]string{"added": "A", "modified": "M", "removed": "R"}
@@ -62,8 +61,5 @@ func fileSection(b *strings.Builder, title string, changes []FileChange) {
 
 func renderJSON(rep Report) (string, error) {
 	out, err := json.MarshalIndent(rep, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
+	return string(out), err
 }

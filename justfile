@@ -55,7 +55,7 @@ fmt-check:
 # golangci-lint
 [group('ci')]
 lint:
-    podman run --rm -v "{{ root }}:/src:z" -w /src {{ lint_image }} golangci-lint run ./...
+    just run {{ lint_image }} golangci-lint run ./...
 
 # govulncheck
 [group('ci')]
@@ -109,11 +109,8 @@ semver:
 # build and push the image for one arch, tagged <version>-<arch>
 [group('release')]
 image-release version arch:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    ref="{{ oci_image }}:{{ version }}-{{ arch }}"
-    podman build --platform "linux/{{ arch }}" --build-arg "VERSION={{ version }}" -t "$ref" -f Containerfile .
-    podman push "$ref"
+    just oci "{{ version }}-{{ arch }}" "{{ arch }}"
+    podman push "{{ oci_image }}:{{ version }}-{{ arch }}"
 
 # stitch the per-arch images into a multi-arch manifest and push <version> + latest
 [group('release')]
