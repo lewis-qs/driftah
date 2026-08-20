@@ -11,7 +11,17 @@ permissions:
   pull-requests: write
 
 jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-just
+      - run: just check
+      - run: just integration
+
   version:
+    needs: test
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
