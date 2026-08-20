@@ -37,6 +37,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: just semver
+      - if: ${{ steps.release.outputs.published == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: just major-tag "$VERSION"
 
   image:
     needs: version

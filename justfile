@@ -97,6 +97,15 @@ oci tag="latest" arch=target_arch:
 ghcr-login:
     echo "${GHCR_TOKEN}" | podman login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
 
+# force-update the major (vN) moving tag to point at the given release
+[private]
+major-tag version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v="{{ version }}"
+    git tag -f "v${v%%.*}" "v${v}"
+    git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "v${v%%.*}"
+
 # cut a semver release from conventional commits; emit published/version outputs
 [group('release')]
 semver:
