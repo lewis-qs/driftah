@@ -75,7 +75,7 @@ func TestScanLayersFileIdentity(t *testing.T) {
 	want := map[string]string{
 		"etc/foo.conf":           hh("x"),
 		"usr/bin/tool":           "L:sysroot/ostree/repo/objects/aa/bb.file",
-		"usr/lib/link":           "S:target", // path.Clean("./target")
+		"usr/lib/link":           "S:target",   // path.Clean("./target")
 		"usr/share/app/Packages": hh("notadb"), // basename "Packages" but not under a db dir -> kept
 	}
 	if len(files) != len(want) {
