@@ -7,14 +7,22 @@ import (
 	"strings"
 )
 
+type options struct {
+	platform, format, title string
+	prefixes, ignore        []string
+	filterNoise             bool
+}
+
 func main() {
 	format := flag.String("format", "markdown", "output format: markdown or json")
 	platform := flag.String("platform", "linux/amd64", "platform to inspect for multi-arch images")
 	title := flag.String("title", "", "optional H1 title for markdown output")
 	paths := flag.String("paths", "etc/,usr/", "comma-separated path prefixes to diff (empty to skip the file diff)")
+	ignore := flag.String("ignore", "", "comma-separated path prefixes to omit from the file diff")
+	noFilter := flag.Bool("no-filter", false, "keep noisy files (*.pyc, rpm db) in the file diff")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, "usage: driftah [flags] <from-image> <to-image>\n\n")
-		fmt.Fprint(os.Stderr, "Diff the rpm package sets of two OCI images and print release notes.\n\n")
+		fmt.Fprint(os.Stderr, "Diff two OCI images and print package and file release notes.\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -22,7 +30,15 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	if err := run(flag.Arg(0), flag.Arg(1), *platform, *format, *title, parsePrefixes(*paths)); err != nil {
+	o := options{
+		platform:    *platform,
+		format:      *format,
+		title:       *title,
+		prefixes:    parsePrefixes(*paths),
+		ignore:      parsePrefixes(*ignore),
+		filterNoise: !*noFilter,
+	}
+	if err := run(flag.Arg(0), flag.Arg(1), o); err != nil {
 		fmt.Fprintln(os.Stderr, "driftah:", err)
 		os.Exit(1)
 	}
@@ -48,22 +64,22 @@ type Report struct {
 	Files    FileDiff `json:"files"`
 }
 
-func run(fromRef, toRef, platform, format, title string, prefixes []string) error {
-	from, err := readImage(fromRef, platform, prefixes)
+func run(fromRef, toRef string, o options) error {
+	from, err := readImage(fromRef, o.platform, o.prefixes, o.ignore, o.filterNoise)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", fromRef, err)
 	}
-	to, err := readImage(toRef, platform, prefixes)
+	to, err := readImage(toRef, o.platform, o.prefixes, o.ignore, o.filterNoise)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", toRef, err)
 	}
 	rep := Report{
 		Packages: diff(from.pkgs, to.pkgs),
-		Files:    fileDiff(from.files, to.files, prefixes),
+		Files:    fileDiff(from.files, to.files, o.prefixes),
 	}
-	switch format {
+	switch o.format {
 	case "markdown", "md":
-		fmt.Print(renderMarkdown(rep, title, fromRef, toRef))
+		fmt.Print(renderMarkdown(rep, o.title, fromRef, toRef))
 	case "json":
 		out, err := renderJSON(rep)
 		if err != nil {
@@ -71,7 +87,7 @@ func run(fromRef, toRef, platform, format, title string, prefixes []string) erro
 		}
 		fmt.Println(out)
 	default:
-		return fmt.Errorf("unknown format %q (want markdown or json)", format)
+		return fmt.Errorf("unknown format %q (want markdown or json)", o.format)
 	}
 	return nil
 }

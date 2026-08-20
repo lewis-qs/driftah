@@ -19,8 +19,6 @@ type FileDiff struct {
 	Groups []FileGroup `json:"groups"`
 }
 
-// fileDiff compares two content-identity maps and buckets each changed path
-// under the first matching prefix, preserving the order the prefixes were given.
 func fileDiff(from, to map[string]string, prefixes []string) FileDiff {
 	byPrefix := map[string][]FileChange{}
 	assign := func(c FileChange) {

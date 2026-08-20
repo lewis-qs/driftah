@@ -50,15 +50,16 @@ var (
 
 const sqliteMagic = "SQLite format 3\x00"
 
-// readImage flattens the image once and returns its package set plus a
-// content-identity map for files under the tracked prefixes. In ostree/bootc
-// images most files are tar hardlinks into the content-addressed ostree object
-// store, so the hardlink target is a stable content identity for free; regular
-// files are hashed. The rpm database is found the same way: buffer any file with
-// the sqlite magic (plus any directly-named db file), then resolve the preferred
-// db path through its hardlink. ponytail: streams the whole flattened tar once;
-// add a per-layer scan only if this is measurably too slow on large images.
-func readImage(ref, platformStr string, prefixes []string) (*imageData, error) {
+func isNoise(clean string) bool {
+	base := path.Base(clean)
+	return strings.HasSuffix(base, ".pyc") || slices.Contains(rpmDBMainFiles, base)
+}
+
+// In ostree/bootc images files are tar hardlinks into the content-addressed
+// ostree object store, so the link target is a stable identity; regular files
+// are hashed. The rpm db is found the same way: buffer any sqlite-magic file,
+// then resolve the preferred db path through its hardlink.
+func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise bool) (*imageData, error) {
 	plat, err := v1.ParsePlatform(platformStr)
 	if err != nil {
 		return nil, err
@@ -74,9 +75,9 @@ func readImage(ref, platformStr string, prefixes []string) (*imageData, error) {
 	}
 	defer os.RemoveAll(dir)
 
-	reg := map[string]string{}   // clean archive path -> buffered temp db file
-	link := map[string]string{}  // clean archive path -> clean hardlink target
-	files := map[string]string{} // tracked-prefix path -> content identity
+	reg := map[string]string{}
+	link := map[string]string{}
+	files := map[string]string{}
 	seq := 0
 
 	pr, pw := io.Pipe()
@@ -93,7 +94,10 @@ func readImage(ref, platformStr string, prefixes []string) (*imageData, error) {
 		}
 		clean := path.Clean(hdr.Name)
 		isMain := slices.Contains(rpmDBMainFiles, path.Base(clean))
-		tracked := hasAnyPrefix(clean, prefixes)
+		tracked := hasAnyPrefix(clean, prefixes) && !hasAnyPrefix(clean, ignore)
+		if tracked && filterNoise && isNoise(clean) {
+			tracked = false
+		}
 
 		switch hdr.Typeflag {
 		case tar.TypeLink:

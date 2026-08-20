@@ -15,11 +15,8 @@ type Diff struct {
 	Updated []Update `json:"updated"`
 }
 
-// diff compares two package inventories keyed by full NEVRA. Packages are
-// grouped by name+arch: a name+arch with exactly one instance on each side is a
-// clean update (or unchanged); anything with multiple installed instances
-// (installonly packages like the kernel family) is reported as exact per-version
-// adds/removes rather than being forced into a misleading single "update".
+// Multiple instances of one name+arch (installonly packages like the kernel)
+// become exact per-version adds/removes, not a false single update.
 func diff(from, to map[string]Pkg) Diff {
 	fromNA := groupByNameArch(from)
 	toNA := groupByNameArch(to)
