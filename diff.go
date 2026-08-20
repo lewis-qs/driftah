@@ -1,6 +1,9 @@
 package main
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 type Update struct {
 	Name string `json:"name"`
@@ -57,6 +60,30 @@ func diff(from, to map[string]Pkg) Diff {
 		return d.Updated[i].Name+"."+d.Updated[i].Arch < d.Updated[j].Name+"."+d.Updated[j].Arch
 	})
 	return d
+}
+
+// dropPkgs removes whole package families: token T matches name T or T-*, so
+// "kernel" strips kernel, kernel-core, kernel-modules, etc.
+func dropPkgs(m map[string]Pkg, families []string) map[string]Pkg {
+	if len(families) == 0 {
+		return m
+	}
+	out := make(map[string]Pkg, len(m))
+	for k, p := range m {
+		if !matchFamily(p.Name, families) {
+			out[k] = p
+		}
+	}
+	return out
+}
+
+func matchFamily(name string, families []string) bool {
+	for _, f := range families {
+		if name == f || strings.HasPrefix(name, f+"-") {
+			return true
+		}
+	}
+	return false
 }
 
 func groupByNameArch(m map[string]Pkg) map[string][]Pkg {

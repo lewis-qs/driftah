@@ -47,6 +47,20 @@ func TestDiffInstallonly(t *testing.T) {
 	}
 }
 
+func TestMatchFamily(t *testing.T) {
+	fams := []string{"kernel"}
+	for _, n := range []string{"kernel", "kernel-core", "kernel-modules-extra"} {
+		if !matchFamily(n, fams) {
+			t.Errorf("%s should match family kernel", n)
+		}
+	}
+	for _, n := range []string{"kernelshark", "kmod", "bash"} {
+		if matchFamily(n, fams) {
+			t.Errorf("%s should not match family kernel", n)
+		}
+	}
+}
+
 func TestFileDiff(t *testing.T) {
 	from := map[string]string{"etc/a.conf": "H:1", "etc/gone": "H:9", "usr/bin/x": "L:objA"}
 	to := map[string]string{"etc/a.conf": "H:2", "etc/new": "H:3", "usr/bin/x": "L:objA"}

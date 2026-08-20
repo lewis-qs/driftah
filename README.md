@@ -23,6 +23,9 @@ driftah [flags] <from-image> <to-image>
   --format markdown|json   output format (default markdown)
   --platform linux/amd64   platform to inspect for multi-arch images
   --paths etc/,usr/        comma-separated path prefixes to diff (empty to skip)
+  --ignore ...             comma-separated path prefixes to omit from the file diff
+  --ignore-packages ...    comma-separated package families to omit (e.g. kernel)
+  --no-filter              keep noisy files (*.pyc, rpm db) in the file diff
   --title "..."            optional H1 title for markdown output
 ```
 
@@ -30,9 +33,10 @@ Both arguments are image references, resolved against the ambient container
 registry credentials (`~/.docker/config.json`, `DOCKER_CONFIG`, or
 `REGISTRY_AUTH_FILE`).
 
-Narrow the file diff to what you care about, e.g. `--paths etc/,usr/lib` or just
-`--paths etc/`. The prefixes also decide how the file changes are grouped in the
-output.
+By default the file diff hides churn with no signal (`*.pyc`, the rpm database
+files); pass `--no-filter` to keep them. Narrow scope with `--paths etc/,usr/lib`,
+omit areas with `--ignore usr/lib64`, and drop noisy package families with
+`--ignore-packages kernel`. The `--paths` prefixes also group the file output.
 
 ### As a container
 
