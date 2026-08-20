@@ -47,6 +47,14 @@ fmt:
 [group('ci')]
 check: vet test
 
+# lint commit messages in a range (CI passes the PR base/head shas)
+[group('ci')]
+commitlint from to:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    npm install --no-save @commitlint/cli @commitlint/config-conventional
+    npx commitlint --from "{{ from }}" --to "{{ to }}" --verbose
+
 # diff two images from source (e.g. just diff <from> <to> --format json)
 [group('dev')]
 diff from to *args:
@@ -56,6 +64,50 @@ diff from to *args:
 [group('deploy')]
 oci tag="latest" arch=target_arch:
     podman build --platform "linux/{{ arch }}" --build-arg "VERSION={{ version }}" -t "{{ oci_image }}:{{ tag }}" -f Containerfile .
+
+# log in to ghcr with GHCR_TOKEN / GITHUB_ACTOR from the environment
+[private]
+ghcr-login:
+    echo "${GHCR_TOKEN}" | podman login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+
+# cut a semver release from conventional commits; emit published/version outputs
+[group('release')]
+semver:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    npm install --no-save semantic-release@24 @semantic-release/github@10 conventional-changelog-conventionalcommits@7
+    npx semantic-release
+    ver="$(git tag --points-at HEAD | sed -n 's/^v//p' | head -1)"
+    out="${GITHUB_OUTPUT:-/dev/stdout}"
+    if [ -n "$ver" ]; then
+        { echo "published=true"; echo "version=$ver"; } >> "$out"
+        echo "released $ver"
+    else
+        echo "published=false" >> "$out"
+        echo "no release"
+    fi
+
+# build and push the image for one arch, tagged <version>-<arch>
+[group('release')]
+image-release version arch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ref="{{ oci_image }}:{{ version }}-{{ arch }}"
+    podman build --platform "linux/{{ arch }}" --build-arg "VERSION={{ version }}" -t "$ref" -f Containerfile .
+    podman push "$ref"
+
+# stitch the per-arch images into a multi-arch manifest and push <version> + latest
+[group('release')]
+manifest-release version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for tag in "{{ version }}" latest; do
+        podman manifest create m
+        podman manifest add m "docker://{{ oci_image }}:{{ version }}-amd64"
+        podman manifest add m "docker://{{ oci_image }}:{{ version }}-arm64"
+        podman manifest push --all m "docker://{{ oci_image }}:${tag}"
+        podman manifest rm m
+    done
 
 # remove build artefacts
 [group('dev')]
