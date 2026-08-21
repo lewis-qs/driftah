@@ -3,6 +3,7 @@ package main
 import (
 	"slices"
 	"sort"
+	"strings"
 )
 
 type KeyVersion struct {
@@ -18,7 +19,7 @@ func keyVersions(pkgs map[string]Pkg, names []string, short bool) []KeyVersion {
 	for _, p := range pkgs {
 		v := p.EVR()
 		if short {
-			v = p.Version
+			v = shortEVR(p)
 		}
 		byName[p.Name] = append(byName[p.Name], v)
 	}
@@ -30,4 +31,18 @@ func keyVersions(pkgs map[string]Pkg, names []string, short bool) []KeyVersion {
 		}
 	}
 	return out
+}
+
+// shortEVR drops the epoch and the distribution/vendor tag (`.el10_2`,
+// `.alma.1`, …) but keeps the version and package release, so the meaningful
+// patch level survives (e.g. kernel `6.12.0-211.47.1.el10_2` -> `6.12.0-211.47.1`).
+func shortEVR(p Pkg) string {
+	rel := p.Release
+	if i := strings.Index(rel, ".el"); i >= 0 {
+		rel = rel[:i]
+	}
+	if rel == "" {
+		return p.Version
+	}
+	return p.Version + "-" + rel
 }

@@ -27,9 +27,16 @@ func TestKeyVersions(t *testing.T) {
 		t.Errorf("glibc = %+v (want 1 version after arch dedup)", kvs[2])
 	}
 
-	// short mode drops the release: 6.12-1/6.13-1 -> 6.12/6.13
-	short := keyVersions(to, []string{"kernel"}, true)
-	if len(short) != 1 || short[0].Versions[0] != "6.12" || short[0].Versions[1] != "6.13" {
-		t.Errorf("short kernel = %+v (want [6.12 6.13])", short)
+	// short mode keeps version-release but strips the dist/vendor tag + epoch
+	dist := index(
+		Pkg{Name: "kernel", Version: "6.12.0", Release: "211.47.1.el10_2", Arch: "x86_64"},
+		Pkg{Name: "bootc", Version: "1.15.2", Release: "1.el10_2.alma.1", Arch: "x86_64"},
+		Pkg{Name: "podman", Epoch: "7", Version: "5.8.2", Release: "5.el10_2.alma.1", Arch: "x86_64"},
+	)
+	want := map[string]string{"kernel": "6.12.0-211.47.1", "bootc": "1.15.2-1", "podman": "5.8.2-5"}
+	for _, kv := range keyVersions(dist, []string{"kernel", "bootc", "podman"}, true) {
+		if kv.Versions[0] != want[kv.Name] {
+			t.Errorf("short %s = %q (want %q)", kv.Name, kv.Versions[0], want[kv.Name])
+		}
 	}
 }
