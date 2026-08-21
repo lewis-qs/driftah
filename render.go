@@ -47,6 +47,8 @@ func keyVersionsSection(b *strings.Builder, kvs []KeyVersion) {
 	}
 	b.WriteString("### Key versions\n\n")
 	for _, kv := range kvs {
+		// kv.Name is operator-supplied (--highlight), so it's trusted and left
+		// raw; only kv.Versions come from the image, so only those get mdCode.
 		vs := make([]string, len(kv.Versions))
 		for i, v := range kv.Versions {
 			vs[i] = mdCode(v)

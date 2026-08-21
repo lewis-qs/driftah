@@ -1,6 +1,9 @@
 package main
 
-import "sort"
+import (
+	"slices"
+	"sort"
+)
 
 type KeyVersion struct {
 	Name     string   `json:"name"`
@@ -19,7 +22,7 @@ func keyVersions(pkgs map[string]Pkg, names []string) []KeyVersion {
 	for _, n := range names {
 		if evrs, ok := byName[n]; ok {
 			sort.Strings(evrs)
-			out = append(out, KeyVersion{Name: n, Versions: evrs})
+			out = append(out, KeyVersion{Name: n, Versions: slices.Compact(evrs)})
 		}
 	}
 	return out
