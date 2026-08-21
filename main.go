@@ -15,6 +15,7 @@ type options struct {
 	prefixes, ignore        []string
 	ignorePkgs, highlight   []string
 	filterNoise             bool
+	shortVersions           bool
 }
 
 func main() {
@@ -26,6 +27,7 @@ func main() {
 	ignore := flag.String("ignore", "", "comma-separated path prefixes to omit from the file diff")
 	ignorePkgs := flag.String("ignore-packages", "", "comma-separated package families to omit (e.g. kernel)")
 	highlight := flag.String("highlight", "", "comma-separated packages to list current versions for (Key versions section)")
+	shortVersions := flag.Bool("short-versions", false, "in the Key versions section, show only the upstream version (drop epoch and release)")
 	noFilter := flag.Bool("no-filter", false, "keep noisy files (*.pyc, rpm db) in the file diff")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, "usage: driftah [flags] <from-image> <to-image>\n\n")
@@ -42,14 +44,15 @@ func main() {
 		os.Exit(2)
 	}
 	o := options{
-		platform:    *platform,
-		format:      *format,
-		title:       *title,
-		prefixes:    parsePrefixes(*paths),
-		ignore:      parsePrefixes(*ignore),
-		ignorePkgs:  parseCSV(*ignorePkgs),
-		highlight:   parseCSV(*highlight),
-		filterNoise: !*noFilter,
+		platform:      *platform,
+		format:        *format,
+		title:         *title,
+		prefixes:      parsePrefixes(*paths),
+		ignore:        parsePrefixes(*ignore),
+		ignorePkgs:    parseCSV(*ignorePkgs),
+		highlight:     parseCSV(*highlight),
+		filterNoise:   !*noFilter,
+		shortVersions: *shortVersions,
 	}
 	if err := run(flag.Arg(0), flag.Arg(1), o); err != nil {
 		fmt.Fprintln(os.Stderr, "driftah:", err)
@@ -95,7 +98,7 @@ func run(fromRef, toRef string, o options) error {
 		return fmt.Errorf("reading %s: %w", toRef, err)
 	}
 	rep := Report{
-		KeyVersions: keyVersions(to.pkgs, o.highlight),
+		KeyVersions: keyVersions(to.pkgs, o.highlight, o.shortVersions),
 		Packages:    diff(dropPkgs(from.pkgs, o.ignorePkgs), dropPkgs(to.pkgs, o.ignorePkgs)),
 		Files:       fileDiff(from.files, to.files, o.prefixes),
 	}

@@ -11,7 +11,7 @@ func TestKeyVersions(t *testing.T) {
 		Pkg{Name: "glibc", Version: "2.34", Release: "1", Arch: "x86_64"},
 		Pkg{Name: "glibc", Version: "2.34", Release: "1", Arch: "aarch64"},
 	)
-	kvs := keyVersions(to, []string{"kernel", "bootc", "bash", "glibc"})
+	kvs := keyVersions(to, []string{"kernel", "bootc", "bash", "glibc"}, false)
 
 	// bootc is absent -> omitted; requested order is preserved (kernel, bash, glibc)
 	if len(kvs) != 3 {
@@ -25,5 +25,11 @@ func TestKeyVersions(t *testing.T) {
 	}
 	if kvs[2].Name != "glibc" || len(kvs[2].Versions) != 1 {
 		t.Errorf("glibc = %+v (want 1 version after arch dedup)", kvs[2])
+	}
+
+	// short mode drops the release: 6.12-1/6.13-1 -> 6.12/6.13
+	short := keyVersions(to, []string{"kernel"}, true)
+	if len(short) != 1 || short[0].Versions[0] != "6.12" || short[0].Versions[1] != "6.13" {
+		t.Errorf("short kernel = %+v (want [6.12 6.13])", short)
 	}
 }
