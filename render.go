@@ -17,6 +17,7 @@ func renderMarkdown(rep Report, title, fromRef, toRef string) string {
 		fmt.Fprintf(&b, "# %s\n\n", title)
 	}
 	fmt.Fprintf(&b, "**From:** %s  \n**To:** %s\n\n", mdCode(fromRef), mdCode(toRef))
+	keyVersionsSection(&b, rep.KeyVersions)
 
 	d := rep.Packages
 	if d.empty() && rep.Files.empty() {
@@ -38,6 +39,21 @@ func renderMarkdown(rep Report, title, fromRef, toRef string) string {
 		fileSection(&b, "/"+strings.TrimSuffix(g.Prefix, "/"), g.Changes)
 	}
 	return b.String()
+}
+
+func keyVersionsSection(b *strings.Builder, kvs []KeyVersion) {
+	if len(kvs) == 0 {
+		return
+	}
+	b.WriteString("### Key versions\n\n")
+	for _, kv := range kvs {
+		vs := make([]string, len(kv.Versions))
+		for i, v := range kv.Versions {
+			vs[i] = mdCode(v)
+		}
+		fmt.Fprintf(b, "- **%s** %s\n", kv.Name, strings.Join(vs, ", "))
+	}
+	b.WriteString("\n")
 }
 
 func pkgSection(b *strings.Builder, title string, pkgs []Pkg) {

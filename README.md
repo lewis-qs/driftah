@@ -28,9 +28,15 @@ driftah [flags] <from-image> <to-image>
   --paths etc/,usr/        comma-separated path prefixes to diff (empty to skip)
   --ignore ...             comma-separated path prefixes to omit from the file diff
   --ignore-packages ...    comma-separated package families to omit (e.g. kernel)
+  --highlight ...          comma-separated packages to list current versions for
   --no-filter              keep noisy files (*.pyc, rpm db) in the file diff
   --title "..."            optional H1 title for markdown output
 ```
+
+`--highlight kernel,bootc,systemd,podman` adds a **Key versions** block (the
+current version of each listed package, read from the `to` image) at the top of
+the output — always shown, even when nothing changed. Absent packages are
+omitted; installonly packages (e.g. kernel) list all installed versions.
 
 Both arguments are image references, resolved against the ambient container
 registry credentials (`~/.docker/config.json`, `DOCKER_CONFIG`, or

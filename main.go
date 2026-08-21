@@ -13,7 +13,7 @@ var version = "dev"
 type options struct {
 	platform, format, title string
 	prefixes, ignore        []string
-	ignorePkgs              []string
+	ignorePkgs, highlight   []string
 	filterNoise             bool
 }
 
@@ -25,6 +25,7 @@ func main() {
 	paths := flag.String("paths", "etc/,usr/", "comma-separated path prefixes to diff (empty to skip the file diff)")
 	ignore := flag.String("ignore", "", "comma-separated path prefixes to omit from the file diff")
 	ignorePkgs := flag.String("ignore-packages", "", "comma-separated package families to omit (e.g. kernel)")
+	highlight := flag.String("highlight", "", "comma-separated packages to list current versions for (Key versions section)")
 	noFilter := flag.Bool("no-filter", false, "keep noisy files (*.pyc, rpm db) in the file diff")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, "usage: driftah [flags] <from-image> <to-image>\n\n")
@@ -47,6 +48,7 @@ func main() {
 		prefixes:    parsePrefixes(*paths),
 		ignore:      parsePrefixes(*ignore),
 		ignorePkgs:  parseCSV(*ignorePkgs),
+		highlight:   parseCSV(*highlight),
 		filterNoise: !*noFilter,
 	}
 	if err := run(flag.Arg(0), flag.Arg(1), o); err != nil {
@@ -78,8 +80,9 @@ func parseCSV(s string) []string {
 }
 
 type Report struct {
-	Packages Diff     `json:"packages"`
-	Files    FileDiff `json:"files"`
+	KeyVersions []KeyVersion `json:"key_versions"`
+	Packages    Diff         `json:"packages"`
+	Files       FileDiff     `json:"files"`
 }
 
 func run(fromRef, toRef string, o options) error {
@@ -92,8 +95,9 @@ func run(fromRef, toRef string, o options) error {
 		return fmt.Errorf("reading %s: %w", toRef, err)
 	}
 	rep := Report{
-		Packages: diff(dropPkgs(from.pkgs, o.ignorePkgs), dropPkgs(to.pkgs, o.ignorePkgs)),
-		Files:    fileDiff(from.files, to.files, o.prefixes),
+		KeyVersions: keyVersions(to.pkgs, o.highlight),
+		Packages:    diff(dropPkgs(from.pkgs, o.ignorePkgs), dropPkgs(to.pkgs, o.ignorePkgs)),
+		Files:       fileDiff(from.files, to.files, o.prefixes),
 	}
 	switch o.format {
 	case "markdown":
