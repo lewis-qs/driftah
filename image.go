@@ -46,8 +46,9 @@ func (p Pkg) key() string { return p.Name + "." + p.Arch }
 func (p Pkg) nevraKey() string { return p.Name + "." + p.Arch + "-" + p.EVR() }
 
 type imageData struct {
-	pkgs  map[string]Pkg
-	files map[string]string // path under a tracked prefix -> content identity
+	pkgs    map[string]Pkg
+	files   map[string]string // path under a tracked prefix -> content identity
+	ignored map[string]string // path under a prefix but ignored/noise -> content identity (for the ignored-changes summary)
 }
 
 var (
@@ -84,7 +85,7 @@ func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise b
 	pr, pw := io.Pipe()
 	defer pr.Close()
 	go func() { pw.CloseWithError(crane.Export(img, pw)) }()
-	dbPath, files, err := scanLayers(tar.NewReader(pr), dir, prefixes, ignore, filterNoise)
+	dbPath, files, ignored, err := scanLayers(tar.NewReader(pr), dir, prefixes, ignore, filterNoise)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +114,7 @@ func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise b
 		pk := Pkg{Name: p.Name, Epoch: epoch, Version: p.Version, Release: p.Release, Arch: p.Arch}
 		pkgs[pk.nevraKey()] = pk
 	}
-	return &imageData{pkgs: pkgs, files: files}, nil
+	return &imageData{pkgs: pkgs, files: files, ignored: ignored}, nil
 }
 
 // scanLayers reads a flattened image tar, buffering rpm db files to dir (plus
@@ -122,10 +123,11 @@ func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise b
 // content-identity map for files under the tracked prefixes: the hardlink
 // target for hardlinks, a sha256 for regular files. It returns the resolved db
 // file path (empty if none) and the identity map.
-func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoise bool) (string, map[string]string, error) {
+func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoise bool) (string, map[string]string, map[string]string, error) {
 	reg := map[string]string{}
 	link := map[string]string{}
 	files := map[string]string{}
+	ignored := map[string]string{}
 	seq := 0
 	for {
 		hdr, err := tr.Next()
@@ -133,14 +135,18 @@ func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoi
 			break
 		}
 		if err != nil {
-			return "", nil, fmt.Errorf("export stream: %w", err)
+			return "", nil, nil, fmt.Errorf("export stream: %w", err)
 		}
 		clean := path.Clean(hdr.Name)
 		isMain := slices.Contains(rpmDBMainFiles, path.Base(clean))
-		tracked := hasAnyPrefix(clean, prefixes) && !hasAnyPrefix(clean, ignore)
+		underPrefix := hasAnyPrefix(clean, prefixes)
+		tracked := underPrefix && !hasAnyPrefix(clean, ignore)
 		if tracked && filterNoise && isNoise(clean) {
 			tracked = false
 		}
+		// under a scanned prefix but excluded by --ignore or the noise filter:
+		// still record its identity so we can report a count of ignored changes
+		filtered := underPrefix && !tracked
 
 		switch hdr.Typeflag {
 		case tar.TypeLink:
@@ -149,26 +155,30 @@ func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoi
 			}
 			if tracked {
 				files[clean] = "L:" + path.Clean(hdr.Linkname)
+			} else if filtered {
+				ignored[clean] = "L:" + path.Clean(hdr.Linkname)
 			}
 		case tar.TypeSymlink:
 			if tracked {
 				files[clean] = "S:" + path.Clean(hdr.Linkname)
+			} else if filtered {
+				ignored[clean] = "S:" + path.Clean(hdr.Linkname)
 			}
 		case tar.TypeReg:
 			var head [16]byte
 			n, rerr := io.ReadFull(tr, head[:])
 			if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
-				return "", nil, fmt.Errorf("read %s: %w", clean, rerr)
+				return "", nil, nil, fmt.Errorf("read %s: %w", clean, rerr)
 			}
 			isSqlite := n >= len(sqliteMagic) && string(head[:len(sqliteMagic)]) == sqliteMagic
 			needBuffer := isMain || isSqlite
-			if !needBuffer && !tracked {
+			if !needBuffer && !tracked && !filtered {
 				continue
 			}
 			h := sha256.New()
 			var out *os.File
 			var ws []io.Writer
-			if tracked {
+			if tracked || filtered {
 				ws = append(ws, h)
 			}
 			if needBuffer {
@@ -176,7 +186,7 @@ func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoi
 				seq++
 				f, cerr := os.Create(tmp)
 				if cerr != nil {
-					return "", nil, cerr
+					return "", nil, nil, cerr
 				}
 				out = f
 				ws = append(ws, out)
@@ -191,10 +201,12 @@ func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoi
 				out.Close()
 			}
 			if werr != nil {
-				return "", nil, fmt.Errorf("copy %s: %w", clean, werr)
+				return "", nil, nil, fmt.Errorf("copy %s: %w", clean, werr)
 			}
 			if tracked {
 				files[clean] = "H:" + hex.EncodeToString(h.Sum(nil))
+			} else if filtered {
+				ignored[clean] = "H:" + hex.EncodeToString(h.Sum(nil))
 			}
 		}
 	}
@@ -215,11 +227,11 @@ func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoi
 	for _, d := range rpmDBDirs {
 		for _, f := range rpmDBMainFiles {
 			if t := resolve(d+"/"+f, 0); t != "" {
-				return t, files, nil
+				return t, files, ignored, nil
 			}
 		}
 	}
-	return "", files, nil
+	return "", files, ignored, nil
 }
 
 func hasAnyPrefix(s string, prefixes []string) bool {

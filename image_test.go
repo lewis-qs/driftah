@@ -44,7 +44,7 @@ func TestScanLayersDBResolve(t *testing.T) {
 		entry{name: obj, typ: tar.TypeReg, body: body},
 		entry{name: "usr/share/rpm/rpmdb.sqlite", typ: tar.TypeLink, link: obj},
 	)
-	dbPath, _, err := scanLayers(tr, t.TempDir(), []string{"etc/"}, nil, true)
+	dbPath, _, _, err := scanLayers(tr, t.TempDir(), []string{"etc/"}, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestScanLayersFileIdentity(t *testing.T) {
 		entry{name: "usr/lib/sysimage/rpm/rpmdb.sqlite", typ: tar.TypeReg, body: sqliteMagic + "db"},
 		entry{name: "var/cache/x", typ: tar.TypeReg, body: "y"},
 	)
-	_, files, err := scanLayers(tr, t.TempDir(), []string{"etc/", "usr/"}, []string{"var/"}, true)
+	_, files, _, err := scanLayers(tr, t.TempDir(), []string{"etc/", "usr/"}, []string{"var/"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,6 +50,10 @@ files); pass `--no-filter` to keep them. Narrow scope with `--paths etc/,usr/lib
 omit areas with `--ignore usr/lib64`, and drop noisy package families with
 `--ignore-packages kernel`. The `--paths` prefixes also group the file output.
 
+Changes excluded by `--ignore` or the noise filter aren't listed, but they are
+counted in a one-line summary (e.g. `Ignored changes (not listed): 2064
+`usr/lib/.build-id/``) — objective visibility of the volume without the noise.
+
 ### As a container
 
 ```

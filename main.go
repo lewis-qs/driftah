@@ -83,9 +83,10 @@ func parseCSV(s string) []string {
 }
 
 type Report struct {
-	KeyVersions []KeyVersion `json:"key_versions"`
-	Packages    Diff         `json:"packages"`
-	Files       FileDiff     `json:"files"`
+	KeyVersions []KeyVersion    `json:"key_versions"`
+	Packages    Diff            `json:"packages"`
+	Files       FileDiff        `json:"files"`
+	Ignored     []IgnoredBucket `json:"ignored"`
 }
 
 func run(fromRef, toRef string, o options) error {
@@ -101,6 +102,7 @@ func run(fromRef, toRef string, o options) error {
 		KeyVersions: keyVersions(to.pkgs, o.highlight, o.shortVersions),
 		Packages:    diff(dropPkgs(from.pkgs, o.ignorePkgs), dropPkgs(to.pkgs, o.ignorePkgs)),
 		Files:       fileDiff(from.files, to.files, o.prefixes),
+		Ignored:     ignoredChanges(from.ignored, to.ignored, o.ignore, o.filterNoise),
 	}
 	switch o.format {
 	case "markdown":
