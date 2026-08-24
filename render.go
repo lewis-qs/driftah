@@ -43,18 +43,17 @@ func renderMarkdown(rep Report, title, fromRef, toRef string) string {
 	return b.String()
 }
 
-// ignoredSection prints a one-line count of the file changes that were excluded
-// from the diff (by --ignore or the noise filter) — objective visibility, no
-// listing: e.g. `Ignored: 2064 changes in `usr/lib/.build-id/`, 12 `*.pyc“.
+// ignoredSection prints one line per category of file changes excluded from the
+// diff (by --ignore or the noise filter) — objective counts, not a listing.
 func ignoredSection(b *strings.Builder, buckets []IgnoredBucket) {
 	if len(buckets) == 0 {
 		return
 	}
-	parts := make([]string, len(buckets))
-	for i, bk := range buckets {
-		parts[i] = fmt.Sprintf("%d %s", bk.Count, mdCode(bk.Label))
+	b.WriteString("### Ignored changes (not listed)\n\n")
+	for _, bk := range buckets {
+		fmt.Fprintf(b, "- **%d** %s\n", bk.Count, mdCode(bk.Label))
 	}
-	fmt.Fprintf(b, "\n_Ignored changes (not listed): %s._\n", strings.Join(parts, ", "))
+	b.WriteString("\n")
 }
 
 func keyVersionsSection(b *strings.Builder, kvs []KeyVersion) {
