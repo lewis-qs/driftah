@@ -2,7 +2,7 @@ version: "2"
 linters:
   exclusions:
     rules:
-      # Deferred Close()/RemoveAll teardown: the error isn't actionable here.
+      # Deferred Close()/Remove teardown: the error isn't actionable here.
       - linters:
           - errcheck
-        source: "\\.Close\\(\\)$|os\\.RemoveAll\\("
+        source: "\\.Close\\(\\)$|os\\.Remove(All)?\\("
