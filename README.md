@@ -62,6 +62,8 @@ registry credentials (`~/.docker/config.json`, `DOCKER_CONFIG`, or
 `REGISTRY_AUTH_FILE`).
 
 ```
+driftah ghcr.io/lewis-qs/bootc/almalinux:10.2-20260819 \
+        ghcr.io/lewis-qs/bootc/almalinux:10.2-20260820
 driftah docker.io/library/alpine:3.21 docker.io/library/alpine:edge
 driftah docker.io/library/debian:stable docker.io/library/debian:unstable
 driftah ukify-old.efi ukify-new.efi
@@ -81,8 +83,8 @@ heading (e.g. `- **2064** `usr/lib/.build-id/``).
 
 ```
 podman run --rm ghcr.io/lewis-qs/driftah \
-  docker.io/library/alpine:3.21 \
-  docker.io/library/alpine:edge
+  ghcr.io/lewis-qs/bootc/almalinux:10.2-20260819 \
+  ghcr.io/lewis-qs/bootc/almalinux:10.2-20260820
 ```
 
 For private registries, mount your auth file:
@@ -100,9 +102,9 @@ podman run --rm \
 - uses: lewis-qs/driftah@v1        # pin @<sha>, and image:@sha256:… for a trusted supply chain
   id: notes
   with:
-    from: docker.io/library/alpine:3.21
-    to: docker.io/library/alpine:edge
-    args: --ignore-packages busybox
+    from: ghcr.io/lewis-qs/bootc/almalinux:10.2-20260819
+    to: ghcr.io/lewis-qs/bootc/almalinux:10.2-20260820
+    args: --ignore-packages kernel
 - env:
     NOTES: ${{ steps.notes.outputs.notes }}
   run: gh release create "$VERSION" --notes "$NOTES"
