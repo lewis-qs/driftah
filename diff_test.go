@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -72,6 +73,20 @@ func TestMatchFamily(t *testing.T) {
 		if matchFamily(n, fams) {
 			t.Errorf("%s should not match family kernel", n)
 		}
+	}
+}
+
+func TestLikelyUKI(t *testing.T) {
+	dir := t.TempDir()
+	efi := dir + "/app.efi"
+	if err := os.WriteFile(efi, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !likelyUKI(efi) {
+		t.Fatal("expected .efi")
+	}
+	if likelyUKI("docker.io/library/alpine:latest") {
+		t.Fatal("registry ref is not a uki")
 	}
 }
 

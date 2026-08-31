@@ -28,8 +28,8 @@ It reports:
 
 Those paths are checked in OCI containers, bootc/ostree images, and UKI
 initramfs alike. If the database was stripped, there is no package diff —
-driftah still compares the file tree (and UKI sections). Widen `--paths` if
-the interesting files sit outside `etc/` and `usr/` (e.g. `--paths etc/,usr/,bin/,lib/`).
+driftah still compares the file tree (and UKI sections). For a `.efi` or `.img`,
+the default `--paths` is `etc/,usr/,bin/,sbin/,lib/`; containers stay `etc/,usr/`.
 
 On ostree/bootc images, file identity is the ostree object (content plus
 metadata). On conventional images it is a sha256 of the content.

@@ -10,6 +10,11 @@ import (
 
 var version = "dev"
 
+const (
+	defaultPaths    = "etc/,usr/"
+	ukiDefaultPaths = "etc/,usr/,bin/,sbin/,lib/"
+)
+
 type options struct {
 	platform, format, title string
 	prefixes, ignore        []string
@@ -24,7 +29,7 @@ func main() {
 	format := flag.String("format", "markdown", "output format: markdown or json")
 	platform := flag.String("platform", "linux/amd64", "platform to inspect for multi-arch images")
 	title := flag.String("title", "", "optional H1 title for markdown output")
-	paths := flag.String("paths", "etc/,usr/", "comma-separated path prefixes to diff (empty to skip the file diff)")
+	paths := flag.String("paths", defaultPaths, "comma-separated path prefixes to diff (empty to skip; uki default also includes bin/,sbin/,lib/)")
 	ignore := flag.String("ignore", "", "comma-separated path prefixes to omit from the file diff")
 	ignorePkgs := flag.String("ignore-packages", "", "comma-separated package families to omit (e.g. kernel)")
 	highlight := flag.String("highlight", "", "comma-separated packages to list current versions for (Key versions section)")
@@ -57,6 +62,9 @@ func main() {
 		filterNoise:   !*noFilter,
 		shortVersions: *shortVersions,
 	}
+	if *paths == defaultPaths && (likelyUKI(flag.Arg(0)) || likelyUKI(flag.Arg(1))) {
+		o.prefixes = parsePrefixes(ukiDefaultPaths)
+	}
 	if err := run(flag.Arg(0), flag.Arg(1), o); err != nil {
 		fmt.Fprintln(os.Stderr, "driftah:", err)
 		os.Exit(1)
@@ -83,6 +91,15 @@ func parseCSV(s string) []string {
 		}
 	}
 	return out
+}
+
+func likelyUKI(ref string) bool {
+	st, err := os.Stat(ref)
+	if err != nil || !st.Mode().IsRegular() {
+		return false
+	}
+	n := strings.ToLower(ref)
+	return strings.HasSuffix(n, ".efi") || strings.HasSuffix(n, ".img") || strings.HasSuffix(n, ".uki")
 }
 
 type Report struct {
