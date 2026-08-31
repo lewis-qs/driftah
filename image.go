@@ -28,11 +28,12 @@ const (
 )
 
 type Pkg struct {
-	Name    string
-	Epoch   string
-	Version string
-	Release string
-	Arch    string
+	Name      string
+	Epoch     string
+	Version   string
+	Release   string
+	Arch      string
+	Changelog string `json:"changelog,omitempty"`
 }
 
 func (p Pkg) EVR() string {
@@ -51,9 +52,11 @@ func (p Pkg) key() string { return p.Name + "." + p.Arch }
 func (p Pkg) nevraKey() string { return p.Name + "." + p.Arch + "-" + p.EVR() }
 
 type imageData struct {
-	pkgs    map[string]Pkg
-	files   map[string]string // path under a tracked prefix -> content identity
-	ignored map[string]string // path under a prefix but ignored/noise -> content identity (for the ignored-changes summary)
+	pkgs       map[string]Pkg
+	files      map[string]string
+	ignored    map[string]string
+	owners     map[string]string // path -> package name
+	changelogs map[string]string // package name -> first changelog stanza
 }
 
 var (
@@ -61,13 +64,23 @@ var (
 	rpmDBMainFiles = []string{"rpmdb.sqlite", "Packages", "Packages.db"}
 )
 
-func isNoise(clean string) bool {
-	base := path.Base(clean)
-	if strings.HasSuffix(base, ".pyc") {
-		return true
+func noiseKind(clean string) string {
+	if strings.HasSuffix(path.Base(clean), ".pyc") {
+		return "*.pyc"
 	}
-	return slices.Contains(rpmDBMainFiles, base) && hasAnyPrefix(clean, rpmDBDirs)
+	if slices.Contains(rpmDBMainFiles, path.Base(clean)) && hasAnyPrefix(clean, rpmDBDirs) {
+		return "rpm-db"
+	}
+	if hasAnyPrefix(clean, []string{"lib/apk/db/", "usr/lib/apk/db/"}) {
+		return "apk-db"
+	}
+	if strings.HasPrefix(clean, "var/lib/dpkg/") {
+		return "dpkg-db"
+	}
+	return ""
 }
+
+func isNoise(clean string) bool { return noiseKind(clean) != "" }
 
 func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise bool) (*imageData, error) {
 	plat, err := v1.ParsePlatform(platformStr)
@@ -94,29 +107,36 @@ func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise b
 	if err != nil {
 		return nil, err
 	}
-	pkgs := map[string]Pkg{}
+	d := &imageData{
+		pkgs: map[string]Pkg{}, files: files, ignored: ignored,
+		owners: map[string]string{}, changelogs: map[string]string{},
+	}
 	if dbPath != "" {
-		rpms, rerr := readRPM(dbPath)
+		rpms, owners, rerr := readRPM(dbPath)
 		if rerr != nil {
 			return nil, rerr
 		}
-		pkgs = rpms
+		d.pkgs, d.owners = rpms, owners
 	}
-	mergePkgText(pkgs, pkgText)
-	return &imageData{pkgs: pkgs, files: files, ignored: ignored}, nil
+	mergePkgText(d.pkgs, pkgText)
+	mergeOwners(d, pkgText)
+	mergeChangelogs(d, pkgText)
+	attachChangelogs(d)
+	return d, nil
 }
 
-func readRPM(dbPath string) (map[string]Pkg, error) {
+func readRPM(dbPath string) (map[string]Pkg, map[string]string, error) {
 	db, err := rpmdb.Open(dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("open db: %w", err)
+		return nil, nil, fmt.Errorf("open db: %w", err)
 	}
 	defer db.Close()
 	list, err := db.ListPackages()
 	if err != nil {
-		return nil, fmt.Errorf("list packages: %w", err)
+		return nil, nil, fmt.Errorf("list packages: %w", err)
 	}
 	pkgs := make(map[string]Pkg, len(list))
+	owners := map[string]string{}
 	for _, p := range list {
 		if p.Name == "gpg-pubkey" {
 			continue
@@ -127,8 +147,12 @@ func readRPM(dbPath string) (map[string]Pkg, error) {
 		}
 		pk := Pkg{Name: p.Name, Epoch: epoch, Version: p.Version, Release: p.Release, Arch: p.Arch}
 		pkgs[pk.nevraKey()] = pk
+		names, _ := p.InstalledFileNames()
+		for _, f := range names {
+			owners[strings.TrimPrefix(path.Clean(f), "/")] = p.Name
+		}
 	}
-	return pkgs, nil
+	return pkgs, owners, nil
 }
 
 func mergePkgText(pkgs map[string]Pkg, files map[string][]byte) {
@@ -144,8 +168,115 @@ func mergePkgText(pkgs map[string]Pkg, files map[string][]byte) {
 }
 
 func isPkgText(p string) bool {
-	_, ok := pkgTextParse(p, nil)
+	if _, ok := pkgTextParse(p, nil); ok {
+		return true
+	}
+	if _, ok := changelogPkg(p); ok {
+		return true
+	}
+	_, ok := dpkgListPkg(p)
 	return ok
+}
+
+func changelogPkg(p string) (string, bool) {
+	const pre = "usr/share/doc/"
+	if !strings.HasPrefix(p, pre) {
+		return "", false
+	}
+	rest := p[len(pre):]
+	i := strings.IndexByte(rest, '/')
+	if i < 1 {
+		return "", false
+	}
+	name, base := rest[:i], rest[i+1:]
+	switch base {
+	case "changelog.Debian.gz", "changelog.Debian", "changelog.gz", "changelog", "ChangeLog":
+		return name, true
+	}
+	return "", false
+}
+
+func mergeChangelogs(d *imageData, pkgText map[string][]byte) {
+	if d.changelogs == nil {
+		d.changelogs = map[string]string{}
+	}
+	for p, body := range pkgText {
+		pkg, ok := changelogPkg(p)
+		if !ok {
+			continue
+		}
+		if cl := firstChangelog(body); cl != "" {
+			d.changelogs[pkg] = cl
+		}
+	}
+}
+
+func attachChangelogs(d *imageData) {
+	for k, p := range d.pkgs {
+		if cl := d.changelogs[p.Name]; cl != "" {
+			p.Changelog = cl
+			d.pkgs[k] = p
+		}
+	}
+}
+
+func firstChangelog(b []byte) string {
+	if isGzip(b) {
+		plain, err := gunzip(b)
+		if err == nil {
+			b = plain
+		}
+	}
+	var out []string
+	for _, ln := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(ln, " -- ") && len(out) > 0 {
+			break
+		}
+		out = append(out, ln)
+		if len(out) >= 8 {
+			break
+		}
+	}
+	s := strings.TrimSpace(strings.Join(out, "\n"))
+	if len(s) > 1024 {
+		s = s[:1024]
+	}
+	return s
+}
+
+func dpkgListPkg(p string) (string, bool) {
+	const pre = "var/lib/dpkg/info/"
+	if !strings.HasPrefix(p, pre) || !strings.HasSuffix(p, ".list") {
+		return "", false
+	}
+	base := strings.TrimSuffix(p[len(pre):], ".list")
+	if i := strings.IndexByte(base, ':'); i >= 0 {
+		base = base[:i]
+	}
+	return base, base != ""
+}
+
+func mergeOwners(d *imageData, pkgText map[string][]byte) {
+	if d.owners == nil {
+		d.owners = map[string]string{}
+	}
+	for p, body := range pkgText {
+		switch p {
+		case "lib/apk/db/installed", "usr/lib/apk/db/installed":
+			_, own := parseApkBoth(body)
+			for k, v := range own {
+				d.owners[k] = v
+			}
+		}
+		if pkg, ok := dpkgListPkg(p); ok {
+			for _, line := range strings.Split(string(body), "\n") {
+				line = strings.TrimPrefix(strings.TrimSpace(line), "/")
+				if line != "" {
+					d.owners[path.Clean(line)] = pkg
+				}
+			}
+		}
+	}
 }
 
 // scanLayers reads a flattened image tar, buffering rpm/apk/dpkg databases and

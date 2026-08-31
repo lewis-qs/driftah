@@ -11,9 +11,10 @@ same way: PE sections, then the embedded initramfs.
 
 It reports:
 
-- **Packages** added, updated, or removed (rpm, apk, or deb).
+- **Packages** added, updated, or removed (rpm, apk, or deb), with a changelog
+  stanza when the image ships one.
 - **Files** added, modified, or removed under configurable path prefixes
-  (git-style `A` / `M` / `R`).
+  (git-style `A` / `M` / `R`), with the owning package when known.
 - **UKI** cmdline, os-release, and section hashes (`.linux`, `.initrd`, `.osrel`,
   `.cmdline`, `.dtb`, `.sbat`, …) when the inputs are Unified Kernel Images.
 
@@ -27,8 +28,8 @@ It reports:
 
 Those paths are checked in OCI containers, bootc/ostree images, and UKI
 initramfs alike. If the database was stripped, there is no package diff —
-driftah still compares the file tree (and UKI sections). Widen `--paths` if
-the interesting files sit outside `etc/` and `usr/` (e.g. `--paths etc/,usr/,bin/,lib/`).
+driftah still compares the file tree (and UKI sections). For a `.efi` or `.img`,
+the default `--paths` is `etc/,usr/,bin/,sbin/,lib/`; containers stay `etc/,usr/`.
 
 On ostree/bootc images, file identity is the ostree object (content plus
 metadata). On conventional images it is a sha256 of the content.
@@ -45,7 +46,8 @@ driftah [flags] <from> <to>
   --ignore-packages ...    comma-separated package families to omit (e.g. kernel)
   --highlight ...          comma-separated packages to list current versions for
   --short-versions         in Key versions, drop the epoch and dist tag (keep version-release)
-  --no-filter              keep noisy files (*.pyc, rpm db) in the file diff
+  --no-filter              keep noisy files (*.pyc, rpm/apk/dpkg db) in the file diff
+  --fail-on ...            exit 1 after printing: files, highlight, or path prefixes
   --title "..."            optional H1 title for markdown output
 ```
 
@@ -127,7 +129,7 @@ image if those files are available to the action's `podman run`.
 ### UKI sections (2)
 
 - `M` `.osrel` `VERSION_ID=3.21` → `VERSION_ID=3.22`
-- `M` `.linux` `sha256:abc123def456` → `sha256:fed654cba321`
+- `M` `.linux` `sha256:abc123def456` → `sha256:fed654cba321` (15.5M → 16.1M)
 
 ### Updated packages (2)
 
@@ -136,7 +138,7 @@ image if those files are available to the action's `podman run`.
 
 ### Changed files in /etc (1)
 
-- `M` `etc/os-release`
+- `M` `etc/os-release` (alpine-release)
 ```
 
 ## Build

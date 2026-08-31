@@ -58,14 +58,14 @@ func testImagePair(t *testing.T, fromRef, toRef string, minPkgs int) {
 		t.Fatalf("suspiciously few packages: %d -> %d", len(from.pkgs), len(to.pkgs))
 	}
 	d := diff(from.pkgs, to.pkgs)
-	fd := fileDiff(from.files, to.files, prefixes)
+	fd := fileDiff(from.files, to.files, to.owners, prefixes)
 	if d.empty() && fd.empty() {
 		t.Fatalf("expected package or file drift between %s and %s", fromRef, toRef)
 	}
 	if self := diff(to.pkgs, to.pkgs); !self.empty() {
 		t.Fatalf("self package-diff not empty: %+v", self)
 	}
-	if self := fileDiff(to.files, to.files, prefixes); !self.empty() {
+	if self := fileDiff(to.files, to.files, to.owners, prefixes); !self.empty() {
 		t.Fatalf("self file-diff not empty: %d groups", len(self.Groups))
 	}
 }

@@ -131,7 +131,7 @@ func TestPESectionsAndUKI(t *testing.T) {
 }
 
 func TestParseUKIInitrdAndApk(t *testing.T) {
-	apk := []byte("P:busybox\nV:1.36.1-r15\nA:x86_64\n\nP:musl\nV:1.2.5-r1\nA:x86_64\n")
+	apk := []byte("P:busybox\nV:1.36.1-r15\nA:x86_64\nF:etc\nR:foo\n\nP:musl\nV:1.2.5-r1\nA:x86_64\n")
 	initrd := cpioGz(
 		newc("etc/foo", []byte("v1"), modeReg),
 		newc("lib/apk/db/installed", apk, modeReg),
@@ -158,6 +158,17 @@ func TestParseUKIInitrdAndApk(t *testing.T) {
 	}
 	if d.pkgs["busybox.x86_64-1.36.1-r15"].Name != "busybox" {
 		t.Fatalf("pkgs = %v", d.pkgs)
+	}
+	if d.owners["etc/foo"] != "busybox" {
+		t.Fatalf("owners = %v", d.owners)
+	}
+}
+
+func TestFirstChangelog(t *testing.T) {
+	raw := []byte("bash (5.3-1) unstable; urgency=medium\n\n  * New upstream.\n\n -- Maintainer <m@d>  Mon, 01 Jan 2024 00:00:00 +0000\n\nbash (5.2-1) unstable; urgency=medium\n")
+	got := firstChangelog(raw)
+	if !strings.Contains(got, "New upstream") || strings.Contains(got, "5.2-1") {
+		t.Fatalf("%q", got)
 	}
 }
 
@@ -238,7 +249,7 @@ func TestUKIDiffAndRender(t *testing.T) {
 	if u.empty() {
 		t.Fatal("expected UKI section changes")
 	}
-	fdFiles := fileDiff(fd.files, td.files, []string{"etc/"})
+	fdFiles := fileDiff(fd.files, td.files, td.owners, []string{"etc/"})
 	if fdFiles.empty() {
 		t.Fatal("expected file change in etc/a")
 	}
@@ -247,6 +258,32 @@ func TestUKIDiffAndRender(t *testing.T) {
 		if !bytes.Contains([]byte(md), []byte(want)) {
 			t.Fatalf("markdown missing %q:\n%s", want, md)
 		}
+	}
+}
+
+func TestUKISectionSizes(t *testing.T) {
+	from := makePE(false,
+		peIn{".linux", bytes.Repeat([]byte("k"), 2000)},
+		peIn{".initrd", bytes.Repeat([]byte("i"), 3000)},
+	)
+	to := makePE(false,
+		peIn{".linux", bytes.Repeat([]byte("K"), 8000)},
+		peIn{".initrd", bytes.Repeat([]byte("I"), 9000)},
+	)
+	_, fu, err := parseUKI(from, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tu, err := parseUKI(to, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	md := renderMarkdown(Report{UKI: ukiDiff(fu, tu), Packages: Diff{}}, "", "a.efi", "b.efi")
+	if !strings.Contains(md, "→") || !strings.Contains(md, "K") {
+		t.Fatalf("expected size note:\n%s", md)
+	}
+	if !strings.Contains(md, ".linux") {
+		t.Fatalf("missing .linux:\n%s", md)
 	}
 }
 

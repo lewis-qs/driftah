@@ -6,10 +6,11 @@ import (
 )
 
 type Update struct {
-	Name string `json:"name"`
-	Arch string `json:"arch"`
-	From string `json:"from"`
-	To   string `json:"to"`
+	Name      string `json:"name"`
+	Arch      string `json:"arch"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Changelog string `json:"changelog,omitempty"`
 }
 
 type Diff struct {
@@ -37,7 +38,7 @@ func diff(from, to map[string]Pkg) Diff {
 		fs, ts := fromNA[k], toNA[k]
 		if len(fs) == 1 && len(ts) == 1 {
 			if fs[0].EVR() != ts[0].EVR() {
-				d.Updated = append(d.Updated, Update{Name: ts[0].Name, Arch: ts[0].Arch, From: fs[0].EVR(), To: ts[0].EVR()})
+				d.Updated = append(d.Updated, Update{Name: ts[0].Name, Arch: ts[0].Arch, From: fs[0].EVR(), To: ts[0].EVR(), Changelog: ts[0].Changelog})
 			}
 			continue
 		}

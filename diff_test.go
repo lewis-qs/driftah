@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
 func mk(name, ver string) Pkg { return Pkg{Name: name, Version: ver, Release: "1", Arch: "x86_64"} }
 
@@ -72,10 +76,59 @@ func TestMatchFamily(t *testing.T) {
 	}
 }
 
+func TestLikelyUKI(t *testing.T) {
+	dir := t.TempDir()
+	efi := dir + "/app.efi"
+	if err := os.WriteFile(efi, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !likelyUKI(efi) {
+		t.Fatal("expected .efi")
+	}
+	if likelyUKI("docker.io/library/alpine:latest") {
+		t.Fatal("registry ref is not a uki")
+	}
+}
+
+func TestShouldFail(t *testing.T) {
+	rep := Report{
+		Files:    FileDiff{Groups: []FileGroup{{Prefix: "etc/", Changes: []FileChange{{Path: "etc/a", Status: "modified"}}}}},
+		Packages: Diff{Updated: []Update{{Name: "bash", From: "1", To: "2"}}},
+	}
+	if !shouldFail(rep, []string{"etc/"}, nil) {
+		t.Fatal("etc/ should fail")
+	}
+	if shouldFail(rep, []string{"usr/"}, nil) {
+		t.Fatal("usr/ should not fail")
+	}
+	if !shouldFail(rep, []string{"highlight"}, []string{"bash"}) {
+		t.Fatal("highlight bash should fail")
+	}
+	if shouldFail(rep, []string{"highlight"}, []string{"zsh"}) {
+		t.Fatal("highlight zsh should not fail")
+	}
+	if !shouldFail(rep, []string{"files"}, nil) {
+		t.Fatal("files should fail")
+	}
+}
+
+func TestFileDiffOwner(t *testing.T) {
+	from := map[string]string{"etc/a.conf": "H:1"}
+	to := map[string]string{"etc/a.conf": "H:2"}
+	fd := fileDiff(from, to, map[string]string{"etc/a.conf": "nginx"}, []string{"etc/"})
+	if fd.Groups[0].Changes[0].Owner != "nginx" {
+		t.Fatalf("%+v", fd.Groups[0].Changes[0])
+	}
+	md := renderMarkdown(Report{Files: fd, Packages: Diff{}}, "", "a", "b")
+	if !strings.Contains(md, "(nginx)") {
+		t.Fatalf("markdown missing owner:\n%s", md)
+	}
+}
+
 func TestFileDiff(t *testing.T) {
 	from := map[string]string{"etc/a.conf": "H:1", "etc/gone": "H:9", "usr/bin/x": "L:objA"}
 	to := map[string]string{"etc/a.conf": "H:2", "etc/new": "H:3", "usr/bin/x": "L:objA"}
-	fd := fileDiff(from, to, []string{"etc/", "usr/"})
+	fd := fileDiff(from, to, nil, []string{"etc/", "usr/"})
 	byPrefix := map[string][]FileChange{}
 	for _, g := range fd.Groups {
 		byPrefix[g.Prefix] = g.Changes

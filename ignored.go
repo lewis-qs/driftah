@@ -1,7 +1,6 @@
 package main
 
 import (
-	"path"
 	"strings"
 )
 
@@ -24,7 +23,7 @@ func ignoredChanges(from, to map[string]string, ignorePrefixes []string, filterN
 	}
 
 	prefixCount := map[string]int{}
-	pyc, rpmdb := 0, 0
+	kindCount := map[string]int{}
 	for p := range seen {
 		if from[p] == to[p] {
 			continue // unchanged
@@ -33,25 +32,21 @@ func ignoredChanges(from, to map[string]string, ignorePrefixes []string, filterN
 			prefixCount[pre]++
 			continue
 		}
-		// not prefix-matched, so it is in the ignored set only because it is noise
-		if strings.HasSuffix(path.Base(p), ".pyc") {
-			pyc++
-		} else {
-			rpmdb++
+		if k := noiseKind(p); k != "" {
+			kindCount[k]++
 		}
 	}
 
 	out := []IgnoredBucket{}
-	for _, pre := range ignorePrefixes { // keep the operator's order
+	for _, pre := range ignorePrefixes {
 		if c := prefixCount[pre]; c > 0 {
 			out = append(out, IgnoredBucket{Label: pre, Count: c})
 		}
 	}
-	if pyc > 0 {
-		out = append(out, IgnoredBucket{Label: "*.pyc", Count: pyc})
-	}
-	if rpmdb > 0 {
-		out = append(out, IgnoredBucket{Label: "rpm-db", Count: rpmdb})
+	for _, k := range []string{"*.pyc", "rpm-db", "apk-db", "dpkg-db"} {
+		if c := kindCount[k]; c > 0 {
+			out = append(out, IgnoredBucket{Label: k, Count: c})
+		}
 	}
 	return out
 }

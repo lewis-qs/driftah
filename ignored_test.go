@@ -28,3 +28,12 @@ func TestIgnoredChanges(t *testing.T) {
 		t.Errorf("bucket[1] = %+v, want {rpm-db 1}", got[1])
 	}
 }
+
+func TestIgnoredApkDpkg(t *testing.T) {
+	from := map[string]string{"lib/apk/db/installed": "H:1", "var/lib/dpkg/status": "H:a"}
+	to := map[string]string{"lib/apk/db/installed": "H:2", "var/lib/dpkg/status": "H:b"}
+	got := ignoredChanges(from, to, nil, true)
+	if len(got) != 2 || got[0].Label != "apk-db" || got[1].Label != "dpkg-db" {
+		t.Fatalf("%+v", got)
+	}
+}

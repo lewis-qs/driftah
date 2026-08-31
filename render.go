@@ -33,6 +33,11 @@ func renderMarkdown(rep Report, title, fromRef, toRef string) string {
 		fmt.Fprintf(&b, "### Updated packages (%d)\n\n", len(d.Updated))
 		for _, u := range d.Updated {
 			fmt.Fprintf(&b, "- **%s** %s → %s\n", mdCode(u.Name), mdCode(u.From), mdCode(u.To))
+			if u.Changelog != "" {
+				for _, ln := range strings.Split(u.Changelog, "\n") {
+					fmt.Fprintf(&b, "  %s\n", ln)
+				}
+			}
 		}
 		b.WriteString("\n")
 	}
@@ -111,11 +116,11 @@ func ukiChanges(b *strings.Builder, u *UKIReport) {
 	for _, c := range u.Changes {
 		switch {
 		case c.From == "":
-			fmt.Fprintf(b, "- `A` %s %s\n", mdCode(c.Name), mdCode(shortDisp(c.To)))
+			fmt.Fprintf(b, "- `A` %s %s%s\n", mdCode(c.Name), mdCode(shortDisp(c.To)), sizeNote(0, c.ToSize))
 		case c.To == "":
-			fmt.Fprintf(b, "- `R` %s %s\n", mdCode(c.Name), mdCode(shortDisp(c.From)))
+			fmt.Fprintf(b, "- `R` %s %s%s\n", mdCode(c.Name), mdCode(shortDisp(c.From)), sizeNote(c.FromSize, 0))
 		default:
-			fmt.Fprintf(b, "- `M` %s %s → %s\n", mdCode(c.Name), mdCode(shortDisp(c.From)), mdCode(shortDisp(c.To)))
+			fmt.Fprintf(b, "- `M` %s %s → %s%s\n", mdCode(c.Name), mdCode(shortDisp(c.From)), mdCode(shortDisp(c.To)), sizeNote(c.FromSize, c.ToSize))
 		}
 	}
 	b.WriteString("\n")
@@ -129,6 +134,40 @@ func shortDisp(s string) string {
 	return s
 }
 
+func sizeNote(from, to int) string {
+	if from < 1024 && to < 1024 {
+		return ""
+	}
+	if from == 0 {
+		return " (" + humanSize(to) + ")"
+	}
+	if to == 0 {
+		return " (" + humanSize(from) + ")"
+	}
+	if from == to {
+		return " (" + humanSize(to) + ")"
+	}
+	return " (" + humanSize(from) + " → " + humanSize(to) + ")"
+}
+
+func humanSize(n int) string {
+	if n < 0 {
+		n = 0
+	}
+	switch {
+	case n >= 10<<20:
+		return fmt.Sprintf("%dM", n>>20)
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1fM", float64(n)/(1<<20))
+	case n >= 10<<10:
+		return fmt.Sprintf("%dK", n>>10)
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1fK", float64(n)/(1<<10))
+	default:
+		return strconv.Itoa(n) + "B"
+	}
+}
+
 var statusMark = map[string]string{"added": "A", "modified": "M", "removed": "R"}
 
 func fileSection(b *strings.Builder, title string, changes []FileChange) {
@@ -137,7 +176,11 @@ func fileSection(b *strings.Builder, title string, changes []FileChange) {
 	}
 	fmt.Fprintf(b, "### Changed files in %s (%d)\n\n", title, len(changes))
 	for _, c := range changes {
-		fmt.Fprintf(b, "- `%s` %s\n", statusMark[c.Status], mdCode(c.Path))
+		if c.Owner != "" {
+			fmt.Fprintf(b, "- `%s` %s (%s)\n", statusMark[c.Status], mdCode(c.Path), c.Owner)
+		} else {
+			fmt.Fprintf(b, "- `%s` %s\n", statusMark[c.Status], mdCode(c.Path))
+		}
 	}
 	b.WriteString("\n")
 }
