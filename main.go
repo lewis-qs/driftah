@@ -14,6 +14,7 @@ type options struct {
 	platform, format, title string
 	prefixes, ignore        []string
 	ignorePkgs, highlight   []string
+	failOn                  []string
 	filterNoise             bool
 	shortVersions           bool
 }
@@ -29,6 +30,7 @@ func main() {
 	highlight := flag.String("highlight", "", "comma-separated packages to list current versions for (Key versions section)")
 	shortVersions := flag.Bool("short-versions", false, "in the Key versions section, show only the upstream version (drop epoch and release)")
 	noFilter := flag.Bool("no-filter", false, "keep noisy files (*.pyc, rpm db) in the file diff")
+	failOn := flag.String("fail-on", "", "exit 1 after printing if any of: files, highlight, or path prefixes (e.g. etc/,highlight)")
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, "usage: driftah [flags] <from> <to>\n\n")
 		fmt.Fprint(os.Stderr, "Diff two OCI images, systemd UKIs (.efi), or disk images (.img) and print rpm/apk/deb and file release notes.\n\n")
@@ -51,6 +53,7 @@ func main() {
 		ignore:        parsePrefixes(*ignore),
 		ignorePkgs:    parseCSV(*ignorePkgs),
 		highlight:     parseCSV(*highlight),
+		failOn:        parseCSV(*failOn),
 		filterNoise:   !*noFilter,
 		shortVersions: *shortVersions,
 	}
@@ -118,5 +121,52 @@ func run(fromRef, toRef string, o options) error {
 	default:
 		return fmt.Errorf("unknown format %q (want markdown or json)", o.format)
 	}
+	if shouldFail(rep, o.failOn, o.highlight) {
+		os.Exit(1)
+	}
 	return nil
+}
+
+func shouldFail(rep Report, failOn, highlight []string) bool {
+	for _, tok := range failOn {
+		switch tok {
+		case "files":
+			if !rep.Files.empty() {
+				return true
+			}
+		case "highlight":
+			if highlightMoved(rep.Packages, highlight) {
+				return true
+			}
+		default:
+			pre := strings.TrimPrefix(tok, "/")
+			if !strings.HasSuffix(pre, "/") {
+				pre += "/"
+			}
+			for _, g := range rep.Files.Groups {
+				if g.Prefix == pre && len(g.Changes) > 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func highlightMoved(d Diff, names []string) bool {
+	want := map[string]bool{}
+	for _, n := range names {
+		want[n] = true
+	}
+	for _, u := range d.Updated {
+		if want[u.Name] {
+			return true
+		}
+	}
+	for _, p := range append(d.Added, d.Removed...) {
+		if want[p.Name] {
+			return true
+		}
+	}
+	return false
 }

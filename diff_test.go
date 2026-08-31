@@ -75,6 +75,28 @@ func TestMatchFamily(t *testing.T) {
 	}
 }
 
+func TestShouldFail(t *testing.T) {
+	rep := Report{
+		Files:    FileDiff{Groups: []FileGroup{{Prefix: "etc/", Changes: []FileChange{{Path: "etc/a", Status: "modified"}}}}},
+		Packages: Diff{Updated: []Update{{Name: "bash", From: "1", To: "2"}}},
+	}
+	if !shouldFail(rep, []string{"etc/"}, nil) {
+		t.Fatal("etc/ should fail")
+	}
+	if shouldFail(rep, []string{"usr/"}, nil) {
+		t.Fatal("usr/ should not fail")
+	}
+	if !shouldFail(rep, []string{"highlight"}, []string{"bash"}) {
+		t.Fatal("highlight bash should fail")
+	}
+	if shouldFail(rep, []string{"highlight"}, []string{"zsh"}) {
+		t.Fatal("highlight zsh should not fail")
+	}
+	if !shouldFail(rep, []string{"files"}, nil) {
+		t.Fatal("files should fail")
+	}
+}
+
 func TestFileDiffOwner(t *testing.T) {
 	from := map[string]string{"etc/a.conf": "H:1"}
 	to := map[string]string{"etc/a.conf": "H:2"}
