@@ -396,7 +396,7 @@ func tryRPM(pkgs map[string]Pkg, name string, body []byte) {
 	tmp := f.Name()
 	_, werr := f.Write(body)
 	_ = f.Close()
-	defer os.Remove(tmp)
+	defer func() { _ = os.Remove(tmp) }()
 	if werr != nil {
 		return
 	}
