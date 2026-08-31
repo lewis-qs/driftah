@@ -127,7 +127,7 @@ image if those files are available to the action's `podman run`.
 ### UKI sections (2)
 
 - `M` `.osrel` `VERSION_ID=3.21` → `VERSION_ID=3.22`
-- `M` `.linux` `sha256:abc123def456` → `sha256:fed654cba321`
+- `M` `.linux` `sha256:abc123def456` → `sha256:fed654cba321` (15.5M → 16.1M)
 
 ### Updated packages (2)
 

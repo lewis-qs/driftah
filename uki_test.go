@@ -250,6 +250,32 @@ func TestUKIDiffAndRender(t *testing.T) {
 	}
 }
 
+func TestUKISectionSizes(t *testing.T) {
+	from := makePE(false,
+		peIn{".linux", bytes.Repeat([]byte("k"), 2000)},
+		peIn{".initrd", bytes.Repeat([]byte("i"), 3000)},
+	)
+	to := makePE(false,
+		peIn{".linux", bytes.Repeat([]byte("K"), 8000)},
+		peIn{".initrd", bytes.Repeat([]byte("I"), 9000)},
+	)
+	_, fu, err := parseUKI(from, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tu, err := parseUKI(to, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	md := renderMarkdown(Report{UKI: ukiDiff(fu, tu), Packages: Diff{}}, "", "a.efi", "b.efi")
+	if !strings.Contains(md, "→") || !strings.Contains(md, "K") {
+		t.Fatalf("expected size note:\n%s", md)
+	}
+	if !strings.Contains(md, ".linux") {
+		t.Fatalf("missing .linux:\n%s", md)
+	}
+}
+
 func TestReadUKIFileAndImageScan(t *testing.T) {
 	uki := makePE(false,
 		peIn{".osrel", []byte("ID=alpine\n")},
