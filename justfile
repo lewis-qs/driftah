@@ -52,10 +52,13 @@ lint:
 vuln:
     just run {{ go_image }} go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
-# integration test: pull real images and diff them end to end
+# integration test: pull real images + a signed Fedora UKI
 [group('ci')]
 integration:
-    just run {{ go_image }} go test -tags integration -run TestIntegration -v ./...
+    #!/usr/bin/env bash
+    set -euo pipefail
+    podman run --rm -v "{{ root }}:/src:z" -w /src -e CGO_ENABLED=0 {{ go_image }} \
+        bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rpm2cpio cpio >/dev/null && go test -tags integration -run TestIntegration -v ./...'
 
 # fmt-check + lint + vuln + test (lint's govet covers vet)
 [group('ci')]

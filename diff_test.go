@@ -103,6 +103,7 @@ func TestEVR(t *testing.T) {
 		{Pkg{Version: "1.2", Release: "3"}, "1.2-3"},
 		{Pkg{Epoch: "0", Version: "1.2", Release: "3"}, "1.2-3"},
 		{Pkg{Epoch: "1", Version: "1.2", Release: "3"}, "1:1.2-3"},
+		{Pkg{Version: "3.0.3"}, "3.0.3"},
 	}
 	for _, c := range cases {
 		if got := c.p.EVR(); got != c.want {

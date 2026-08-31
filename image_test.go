@@ -44,7 +44,7 @@ func TestScanLayersDBResolve(t *testing.T) {
 		entry{name: obj, typ: tar.TypeReg, body: body},
 		entry{name: "usr/share/rpm/rpmdb.sqlite", typ: tar.TypeLink, link: obj},
 	)
-	dbPath, _, _, err := scanLayers(tr, t.TempDir(), []string{"etc/"}, nil, true)
+	dbPath, _, _, _, err := scanLayers(tr, t.TempDir(), []string{"etc/"}, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestScanLayersFileIdentity(t *testing.T) {
 		entry{name: "usr/lib/sysimage/rpm/rpmdb.sqlite", typ: tar.TypeReg, body: sqliteMagic + "db"},
 		entry{name: "var/cache/x", typ: tar.TypeReg, body: "y"},
 	)
-	_, files, _, err := scanLayers(tr, t.TempDir(), []string{"etc/", "usr/"}, []string{"var/"}, true)
+	_, files, _, _, err := scanLayers(tr, t.TempDir(), []string{"etc/", "usr/"}, []string{"var/"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,5 +91,36 @@ func TestScanLayersFileIdentity(t *testing.T) {
 		if _, ok := files[bad]; ok {
 			t.Errorf("%s should be filtered out", bad)
 		}
+	}
+}
+
+func TestScanLayersApk(t *testing.T) {
+	body := "P:busybox\nV:1.36.1-r15\nA:x86_64\n\nP:musl\nV:1.2.5-r1\nA:x86_64\n"
+	tr := buildTar(t, entry{name: "lib/apk/db/installed", typ: tar.TypeReg, body: body})
+	dbPath, _, _, pkgText, err := scanLayers(tr, t.TempDir(), []string{"etc/"}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dbPath != "" {
+		t.Fatalf("unexpected rpm db %s", dbPath)
+	}
+	pkgs := map[string]Pkg{}
+	mergePkgText(pkgs, pkgText)
+	if pkgs["busybox.x86_64-1.36.1-r15"].Name != "busybox" || pkgs["musl.x86_64-1.2.5-r1"].Name != "musl" {
+		t.Fatalf("pkgs = %v", pkgs)
+	}
+}
+
+func TestScanLayersNoPkgDB(t *testing.T) {
+	tr := buildTar(t, entry{name: "etc/foo", typ: tar.TypeReg, body: "x"})
+	dbPath, files, _, pkgText, err := scanLayers(tr, t.TempDir(), []string{"etc/"}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dbPath != "" || len(pkgText) != 0 {
+		t.Fatalf("dbPath=%q pkgText=%v", dbPath, pkgText)
+	}
+	if files["etc/foo"] != hh("x") {
+		t.Fatalf("files = %v", files)
 	}
 }

@@ -30,8 +30,8 @@ func main() {
 	shortVersions := flag.Bool("short-versions", false, "in the Key versions section, show only the upstream version (drop epoch and release)")
 	noFilter := flag.Bool("no-filter", false, "keep noisy files (*.pyc, rpm db) in the file diff")
 	flag.Usage = func() {
-		fmt.Fprint(os.Stderr, "usage: driftah [flags] <from-image> <to-image>\n\n")
-		fmt.Fprint(os.Stderr, "Diff two OCI images and print package and file release notes.\n\n")
+		fmt.Fprint(os.Stderr, "usage: driftah [flags] <from> <to>\n\n")
+		fmt.Fprint(os.Stderr, "Diff two OCI images, systemd UKIs (.efi), or disk images (.img) and print rpm/apk/deb and file release notes.\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -84,22 +84,24 @@ func parseCSV(s string) []string {
 
 type Report struct {
 	KeyVersions []KeyVersion    `json:"key_versions"`
+	UKI         *UKIReport      `json:"uki,omitempty"`
 	Packages    Diff            `json:"packages"`
 	Files       FileDiff        `json:"files"`
 	Ignored     []IgnoredBucket `json:"ignored"`
 }
 
 func run(fromRef, toRef string, o options) error {
-	from, err := readImage(fromRef, o.platform, o.prefixes, o.ignore, o.filterNoise)
+	from, fromUKI, err := readInput(fromRef, o.platform, o.prefixes, o.ignore, o.filterNoise)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", fromRef, err)
 	}
-	to, err := readImage(toRef, o.platform, o.prefixes, o.ignore, o.filterNoise)
+	to, toUKI, err := readInput(toRef, o.platform, o.prefixes, o.ignore, o.filterNoise)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", toRef, err)
 	}
 	rep := Report{
 		KeyVersions: keyVersions(to.pkgs, o.highlight, o.shortVersions),
+		UKI:         ukiDiff(fromUKI, toUKI),
 		Packages:    diff(dropPkgs(from.pkgs, o.ignorePkgs), dropPkgs(to.pkgs, o.ignorePkgs)),
 		Files:       fileDiff(from.files, to.files, o.prefixes),
 		Ignored:     ignoredChanges(from.ignored, to.ignored, o.ignore, o.filterNoise),
