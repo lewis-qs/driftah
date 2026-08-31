@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -18,13 +19,15 @@ func renderMarkdown(rep Report, title, fromRef, toRef string) string {
 	}
 	fmt.Fprintf(&b, "**From:** %s  \n**To:** %s\n\n", mdCode(fromRef), mdCode(toRef))
 	keyVersionsSection(&b, rep.KeyVersions)
+	ukiIdentity(&b, rep.UKI)
 
 	d := rep.Packages
-	if d.empty() && rep.Files.empty() {
+	if d.empty() && rep.Files.empty() && rep.UKI.empty() {
 		b.WriteString("No changes.\n")
 		ignoredSection(&b, rep.Ignored)
 		return b.String()
 	}
+	ukiChanges(&b, rep.UKI)
 
 	if len(d.Updated) > 0 {
 		fmt.Fprintf(&b, "### Updated packages (%d)\n\n", len(d.Updated))
@@ -82,6 +85,48 @@ func pkgSection(b *strings.Builder, title string, pkgs []Pkg) {
 		fmt.Fprintf(b, "- %s %s\n", mdCode(p.Name), mdCode(p.EVR()))
 	}
 	b.WriteString("\n")
+}
+
+func ukiIdentity(b *strings.Builder, u *UKIReport) {
+	if u == nil {
+		return
+	}
+	b.WriteString("### UKI\n\n")
+	fmt.Fprintf(b, "- **arch** %s\n", mdCode(u.Arch))
+	fmt.Fprintf(b, "- **signed** %s\n", mdCode(strconv.FormatBool(u.Signed)))
+	if u.Cmdline != "" {
+		fmt.Fprintf(b, "- **cmdline** %s\n", mdCode(u.Cmdline))
+	}
+	if u.OSRel != "" {
+		fmt.Fprintf(b, "- **os-release** %s\n", mdCode(strings.ReplaceAll(u.OSRel, "\n", "; ")))
+	}
+	b.WriteString("\n")
+}
+
+func ukiChanges(b *strings.Builder, u *UKIReport) {
+	if u == nil || len(u.Changes) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "### UKI sections (%d)\n\n", len(u.Changes))
+	for _, c := range u.Changes {
+		switch {
+		case c.From == "":
+			fmt.Fprintf(b, "- `A` %s %s\n", mdCode(c.Name), mdCode(shortDisp(c.To)))
+		case c.To == "":
+			fmt.Fprintf(b, "- `R` %s %s\n", mdCode(c.Name), mdCode(shortDisp(c.From)))
+		default:
+			fmt.Fprintf(b, "- `M` %s %s → %s\n", mdCode(c.Name), mdCode(shortDisp(c.From)), mdCode(shortDisp(c.To)))
+		}
+	}
+	b.WriteString("\n")
+}
+
+func shortDisp(s string) string {
+	s = strings.ReplaceAll(s, "\n", "; ")
+	if strings.HasPrefix(s, "sha256:") && len(s) > 7+16 {
+		return s[:7+16]
+	}
+	return s
 }
 
 var statusMark = map[string]string{"added": "A", "modified": "M", "removed": "R"}

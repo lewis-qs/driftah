@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -35,10 +36,14 @@ type Pkg struct {
 }
 
 func (p Pkg) EVR() string {
-	if p.Epoch != "" && p.Epoch != "0" {
-		return fmt.Sprintf("%s:%s-%s", p.Epoch, p.Version, p.Release)
+	v := p.Version
+	if p.Release != "" {
+		v += "-" + p.Release
 	}
-	return fmt.Sprintf("%s-%s", p.Version, p.Release)
+	if p.Epoch != "" && p.Epoch != "0" {
+		return p.Epoch + ":" + v
+	}
+	return v
 }
 
 func (p Pkg) key() string { return p.Name + "." + p.Arch }
@@ -85,14 +90,23 @@ func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise b
 	pr, pw := io.Pipe()
 	defer pr.Close()
 	go func() { pw.CloseWithError(crane.Export(img, pw)) }()
-	dbPath, files, ignored, err := scanLayers(tar.NewReader(pr), dir, prefixes, ignore, filterNoise)
+	dbPath, files, ignored, pkgText, err := scanLayers(tar.NewReader(pr), dir, prefixes, ignore, filterNoise)
 	if err != nil {
 		return nil, err
 	}
-	if dbPath == "" {
-		return nil, fmt.Errorf("no rpm database found in image")
+	pkgs := map[string]Pkg{}
+	if dbPath != "" {
+		rpms, rerr := readRPM(dbPath)
+		if rerr != nil {
+			return nil, rerr
+		}
+		pkgs = rpms
 	}
+	mergePkgText(pkgs, pkgText)
+	return &imageData{pkgs: pkgs, files: files, ignored: ignored}, nil
+}
 
+func readRPM(dbPath string) (map[string]Pkg, error) {
 	db, err := rpmdb.Open(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -114,20 +128,36 @@ func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise b
 		pk := Pkg{Name: p.Name, Epoch: epoch, Version: p.Version, Release: p.Release, Arch: p.Arch}
 		pkgs[pk.nevraKey()] = pk
 	}
-	return &imageData{pkgs: pkgs, files: files, ignored: ignored}, nil
+	return pkgs, nil
 }
 
-// scanLayers reads a flattened image tar, buffering rpm db files to dir (plus
-// any sqlite-magic file, since ostree stores the db in its content-addressed
-// object store and the /usr paths are hardlinks into it), and builds a
-// content-identity map for files under the tracked prefixes: the hardlink
-// target for hardlinks, a sha256 for regular files. It returns the resolved db
-// file path (empty if none) and the identity map.
-func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoise bool) (string, map[string]string, map[string]string, error) {
+func mergePkgText(pkgs map[string]Pkg, files map[string][]byte) {
+	for p, body := range files {
+		extra, ok := pkgTextParse(p, body)
+		if !ok {
+			continue
+		}
+		for k, v := range extra {
+			pkgs[k] = v
+		}
+	}
+}
+
+func isPkgText(p string) bool {
+	_, ok := pkgTextParse(p, nil)
+	return ok
+}
+
+// scanLayers reads a flattened image tar, buffering rpm/apk/dpkg databases and
+// a content-identity map for files under the tracked prefixes. Ostree stores
+// the rpm db in the object store; /usr paths are hardlinks into it.
+
+func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoise bool) (string, map[string]string, map[string]string, map[string][]byte, error) {
 	reg := map[string]string{}
 	link := map[string]string{}
 	files := map[string]string{}
 	ignored := map[string]string{}
+	pkgText := map[string][]byte{}
 	seq := 0
 	for {
 		hdr, err := tr.Next()
@@ -135,7 +165,7 @@ func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoi
 			break
 		}
 		if err != nil {
-			return "", nil, nil, fmt.Errorf("export stream: %w", err)
+			return "", nil, nil, nil, fmt.Errorf("export stream: %w", err)
 		}
 		clean := path.Clean(hdr.Name)
 		isMain := slices.Contains(rpmDBMainFiles, path.Base(clean))
@@ -168,15 +198,17 @@ func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoi
 			var head [16]byte
 			n, rerr := io.ReadFull(tr, head[:])
 			if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
-				return "", nil, nil, fmt.Errorf("read %s: %w", clean, rerr)
+				return "", nil, nil, nil, fmt.Errorf("read %s: %w", clean, rerr)
 			}
 			isSqlite := n >= len(sqliteMagic) && string(head[:len(sqliteMagic)]) == sqliteMagic
 			needBuffer := isMain || isSqlite
-			if !needBuffer && !tracked && !filtered {
+			needPkgText := isPkgText(clean)
+			if !needBuffer && !needPkgText && !tracked && !filtered {
 				continue
 			}
 			h := sha256.New()
 			var out *os.File
+			var extra bytes.Buffer
 			var ws []io.Writer
 			if tracked || filtered {
 				ws = append(ws, h)
@@ -186,11 +218,14 @@ func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoi
 				seq++
 				f, cerr := os.Create(tmp)
 				if cerr != nil {
-					return "", nil, nil, cerr
+					return "", nil, nil, nil, cerr
 				}
 				out = f
 				ws = append(ws, out)
 				reg[clean] = tmp
+			}
+			if needPkgText {
+				ws = append(ws, &extra)
 			}
 			mw := io.MultiWriter(ws...)
 			_, werr := mw.Write(head[:n])
@@ -201,7 +236,10 @@ func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoi
 				out.Close()
 			}
 			if werr != nil {
-				return "", nil, nil, fmt.Errorf("copy %s: %w", clean, werr)
+				return "", nil, nil, nil, fmt.Errorf("copy %s: %w", clean, werr)
+			}
+			if needPkgText {
+				pkgText[clean] = append([]byte(nil), extra.Bytes()...)
 			}
 			if tracked {
 				files[clean] = "H:" + hex.EncodeToString(h.Sum(nil))
@@ -227,11 +265,11 @@ func scanLayers(tr *tar.Reader, dir string, prefixes, ignore []string, filterNoi
 	for _, d := range rpmDBDirs {
 		for _, f := range rpmDBMainFiles {
 			if t := resolve(d+"/"+f, 0); t != "" {
-				return t, files, ignored, nil
+				return t, files, ignored, pkgText, nil
 			}
 		}
 	}
-	return "", files, ignored, nil
+	return "", files, ignored, pkgText, nil
 }
 
 func hasAnyPrefix(s string, prefixes []string) bool {

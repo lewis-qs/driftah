@@ -1,12 +1,12 @@
 name: driftah
-description: Diff two OCI images and produce package + file release notes.
+description: Diff two OCI images, UKIs, or disk images (rpm, apk, or deb) and produce package + file release notes.
 
 inputs:
   from:
-    description: Old image reference.
+    description: Old image reference, UKI (.efi), or disk image (.img).
     required: true
   to:
-    description: New image reference.
+    description: New image reference, UKI (.efi), or disk image (.img).
     required: true
   image:
     description: driftah container image to run (pin to a digest for a trusted supply chain).
