@@ -64,13 +64,23 @@ var (
 	rpmDBMainFiles = []string{"rpmdb.sqlite", "Packages", "Packages.db"}
 )
 
-func isNoise(clean string) bool {
-	base := path.Base(clean)
-	if strings.HasSuffix(base, ".pyc") {
-		return true
+func noiseKind(clean string) string {
+	if strings.HasSuffix(path.Base(clean), ".pyc") {
+		return "*.pyc"
 	}
-	return slices.Contains(rpmDBMainFiles, base) && hasAnyPrefix(clean, rpmDBDirs)
+	if slices.Contains(rpmDBMainFiles, path.Base(clean)) && hasAnyPrefix(clean, rpmDBDirs) {
+		return "rpm-db"
+	}
+	if hasAnyPrefix(clean, []string{"lib/apk/db/", "usr/lib/apk/db/"}) {
+		return "apk-db"
+	}
+	if strings.HasPrefix(clean, "var/lib/dpkg/") {
+		return "dpkg-db"
+	}
+	return ""
 }
+
+func isNoise(clean string) bool { return noiseKind(clean) != "" }
 
 func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise bool) (*imageData, error) {
 	plat, err := v1.ParsePlatform(platformStr)

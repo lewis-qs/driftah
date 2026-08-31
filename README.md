@@ -46,7 +46,7 @@ driftah [flags] <from> <to>
   --ignore-packages ...    comma-separated package families to omit (e.g. kernel)
   --highlight ...          comma-separated packages to list current versions for
   --short-versions         in Key versions, drop the epoch and dist tag (keep version-release)
-  --no-filter              keep noisy files (*.pyc, rpm db) in the file diff
+  --no-filter              keep noisy files (*.pyc, rpm/apk/dpkg db) in the file diff
   --fail-on ...            exit 1 after printing: files, highlight, or path prefixes
   --title "..."            optional H1 title for markdown output
 ```
