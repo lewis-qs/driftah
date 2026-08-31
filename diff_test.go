@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func mk(name, ver string) Pkg { return Pkg{Name: name, Version: ver, Release: "1", Arch: "x86_64"} }
 
@@ -72,10 +75,23 @@ func TestMatchFamily(t *testing.T) {
 	}
 }
 
+func TestFileDiffOwner(t *testing.T) {
+	from := map[string]string{"etc/a.conf": "H:1"}
+	to := map[string]string{"etc/a.conf": "H:2"}
+	fd := fileDiff(from, to, map[string]string{"etc/a.conf": "nginx"}, []string{"etc/"})
+	if fd.Groups[0].Changes[0].Owner != "nginx" {
+		t.Fatalf("%+v", fd.Groups[0].Changes[0])
+	}
+	md := renderMarkdown(Report{Files: fd, Packages: Diff{}}, "", "a", "b")
+	if !strings.Contains(md, "(nginx)") {
+		t.Fatalf("markdown missing owner:\n%s", md)
+	}
+}
+
 func TestFileDiff(t *testing.T) {
 	from := map[string]string{"etc/a.conf": "H:1", "etc/gone": "H:9", "usr/bin/x": "L:objA"}
 	to := map[string]string{"etc/a.conf": "H:2", "etc/new": "H:3", "usr/bin/x": "L:objA"}
-	fd := fileDiff(from, to, []string{"etc/", "usr/"})
+	fd := fileDiff(from, to, nil, []string{"etc/", "usr/"})
 	byPrefix := map[string][]FileChange{}
 	for _, g := range fd.Groups {
 		byPrefix[g.Prefix] = g.Changes

@@ -171,7 +171,11 @@ func fileSection(b *strings.Builder, title string, changes []FileChange) {
 	}
 	fmt.Fprintf(b, "### Changed files in %s (%d)\n\n", title, len(changes))
 	for _, c := range changes {
-		fmt.Fprintf(b, "- `%s` %s\n", statusMark[c.Status], mdCode(c.Path))
+		if c.Owner != "" {
+			fmt.Fprintf(b, "- `%s` %s (%s)\n", statusMark[c.Status], mdCode(c.Path), c.Owner)
+		} else {
+			fmt.Fprintf(b, "- `%s` %s\n", statusMark[c.Status], mdCode(c.Path))
+		}
 	}
 	b.WriteString("\n")
 }

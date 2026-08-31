@@ -137,7 +137,7 @@ func parseUKI(pe []byte, prefixes, ignore []string, filterNoise bool) (*imageDat
 		meta.Sections[name] = s
 	}
 
-	d := &imageData{pkgs: map[string]Pkg{}, files: map[string]string{}, ignored: map[string]string{}}
+	d := &imageData{pkgs: map[string]Pkg{}, files: map[string]string{}, ignored: map[string]string{}, owners: map[string]string{}}
 	if initrd := secs[".initrd"]; len(initrd) > 0 {
 		if err := walkInitrd(initrd, d, prefixes, ignore, filterNoise); err != nil {
 			return nil, nil, fmt.Errorf("initrd: %w", err)
@@ -349,7 +349,8 @@ func recordCPIO(d *imageData, name string, mode int, body []byte, prefixes, igno
 			d.pkgs[k] = p
 		}
 	}
-	tryRPM(d.pkgs, name, body)
+	tryRPM(d, name, body)
+	mergeOwners(d, map[string][]byte{name: body})
 
 	under := hasAnyPrefix(name, prefixes)
 	tracked := under && !hasAnyPrefix(name, ignore)
@@ -384,7 +385,7 @@ func pkgTextParse(name string, body []byte) (map[string]Pkg, bool) {
 	return nil, false
 }
 
-func tryRPM(pkgs map[string]Pkg, name string, body []byte) {
+func tryRPM(d *imageData, name string, body []byte) {
 	base := path.Base(name)
 	if (base != "rpmdb.sqlite" && base != "Packages" && base != "Packages.db") || !hasAnyPrefix(name, rpmDBDirs) || len(body) == 0 {
 		return
@@ -400,19 +401,29 @@ func tryRPM(pkgs map[string]Pkg, name string, body []byte) {
 	if werr != nil {
 		return
 	}
-	extra, err := readRPM(tmp)
+	extra, owners, err := readRPM(tmp)
 	if err != nil {
 		return
 	}
 	for k, p := range extra {
-		pkgs[k] = p
+		d.pkgs[k] = p
+	}
+	for k, v := range owners {
+		d.owners[k] = v
 	}
 }
 
 func parseApk(b []byte) map[string]Pkg {
+	pkgs, _ := parseApkBoth(b)
+	return pkgs
+}
+
+func parseApkBoth(b []byte) (map[string]Pkg, map[string]string) {
 	out := map[string]Pkg{}
+	owners := map[string]string{}
 	for _, rec := range strings.Split(string(b), "\n\n") {
 		p := Pkg{}
+		dir := ""
 		for _, line := range strings.Split(rec, "\n") {
 			k, v, ok := strings.Cut(line, ":")
 			if !ok {
@@ -425,6 +436,12 @@ func parseApk(b []byte) map[string]Pkg {
 				p.Version = v
 			case "A":
 				p.Arch = v
+			case "F":
+				dir = v
+			case "R":
+				if p.Name != "" {
+					owners[path.Clean(dir+"/"+v)] = p.Name
+				}
 			}
 		}
 		if p.Name == "" || p.Version == "" {
@@ -432,7 +449,7 @@ func parseApk(b []byte) map[string]Pkg {
 		}
 		out[p.nevraKey()] = p
 	}
-	return out
+	return out, owners
 }
 
 func parseDpkg(b []byte) map[string]Pkg {

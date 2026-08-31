@@ -103,7 +103,7 @@ func run(fromRef, toRef string, o options) error {
 		KeyVersions: keyVersions(to.pkgs, o.highlight, o.shortVersions),
 		UKI:         ukiDiff(fromUKI, toUKI),
 		Packages:    diff(dropPkgs(from.pkgs, o.ignorePkgs), dropPkgs(to.pkgs, o.ignorePkgs)),
-		Files:       fileDiff(from.files, to.files, o.prefixes),
+		Files:       fileDiff(from.files, to.files, mergeOwnerMaps(from.owners, to.owners), o.prefixes),
 		Ignored:     ignoredChanges(from.ignored, to.ignored, o.ignore, o.filterNoise),
 	}
 	switch o.format {

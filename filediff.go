@@ -8,6 +8,7 @@ import (
 type FileChange struct {
 	Path   string `json:"path"`
 	Status string `json:"status"` // added, modified, removed
+	Owner  string `json:"owner,omitempty"`
 }
 
 type FileGroup struct {
@@ -19,7 +20,7 @@ type FileDiff struct {
 	Groups []FileGroup `json:"groups"`
 }
 
-func fileDiff(from, to map[string]string, prefixes []string) FileDiff {
+func fileDiff(from, to map[string]string, owners map[string]string, prefixes []string) FileDiff {
 	byPrefix := map[string][]FileChange{}
 	assign := func(c FileChange) {
 		for _, pre := range prefixes {
@@ -29,16 +30,22 @@ func fileDiff(from, to map[string]string, prefixes []string) FileDiff {
 			}
 		}
 	}
+	own := func(p string) string {
+		if owners == nil {
+			return ""
+		}
+		return owners[p]
+	}
 	for p, tv := range to {
 		if fv, ok := from[p]; !ok {
-			assign(FileChange{p, "added"})
+			assign(FileChange{Path: p, Status: "added", Owner: own(p)})
 		} else if fv != tv {
-			assign(FileChange{p, "modified"})
+			assign(FileChange{Path: p, Status: "modified", Owner: own(p)})
 		}
 	}
 	for p := range from {
 		if _, ok := to[p]; !ok {
-			assign(FileChange{p, "removed"})
+			assign(FileChange{Path: p, Status: "removed", Owner: own(p)})
 		}
 	}
 
@@ -55,3 +62,14 @@ func fileDiff(from, to map[string]string, prefixes []string) FileDiff {
 }
 
 func (f FileDiff) empty() bool { return len(f.Groups) == 0 }
+
+func mergeOwnerMaps(a, b map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range a {
+		out[k] = v
+	}
+	for k, v := range b {
+		out[k] = v
+	}
+	return out
+}

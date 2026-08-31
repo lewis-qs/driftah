@@ -131,7 +131,7 @@ func TestPESectionsAndUKI(t *testing.T) {
 }
 
 func TestParseUKIInitrdAndApk(t *testing.T) {
-	apk := []byte("P:busybox\nV:1.36.1-r15\nA:x86_64\n\nP:musl\nV:1.2.5-r1\nA:x86_64\n")
+	apk := []byte("P:busybox\nV:1.36.1-r15\nA:x86_64\nF:etc\nR:foo\n\nP:musl\nV:1.2.5-r1\nA:x86_64\n")
 	initrd := cpioGz(
 		newc("etc/foo", []byte("v1"), modeReg),
 		newc("lib/apk/db/installed", apk, modeReg),
@@ -158,6 +158,9 @@ func TestParseUKIInitrdAndApk(t *testing.T) {
 	}
 	if d.pkgs["busybox.x86_64-1.36.1-r15"].Name != "busybox" {
 		t.Fatalf("pkgs = %v", d.pkgs)
+	}
+	if d.owners["etc/foo"] != "busybox" {
+		t.Fatalf("owners = %v", d.owners)
 	}
 }
 
@@ -238,7 +241,7 @@ func TestUKIDiffAndRender(t *testing.T) {
 	if u.empty() {
 		t.Fatal("expected UKI section changes")
 	}
-	fdFiles := fileDiff(fd.files, td.files, []string{"etc/"})
+	fdFiles := fileDiff(fd.files, td.files, td.owners, []string{"etc/"})
 	if fdFiles.empty() {
 		t.Fatal("expected file change in etc/a")
 	}

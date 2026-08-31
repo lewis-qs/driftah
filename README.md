@@ -13,7 +13,7 @@ It reports:
 
 - **Packages** added, updated, or removed (rpm, apk, or deb).
 - **Files** added, modified, or removed under configurable path prefixes
-  (git-style `A` / `M` / `R`).
+  (git-style `A` / `M` / `R`), with the owning package when known.
 - **UKI** cmdline, os-release, and section hashes (`.linux`, `.initrd`, `.osrel`,
   `.cmdline`, `.dtb`, `.sbat`, …) when the inputs are Unified Kernel Images.
 
@@ -136,7 +136,7 @@ image if those files are available to the action's `podman run`.
 
 ### Changed files in /etc (1)
 
-- `M` `etc/os-release`
+- `M` `etc/os-release` (alpine-release)
 ```
 
 ## Build

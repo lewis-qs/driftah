@@ -52,8 +52,9 @@ func (p Pkg) nevraKey() string { return p.Name + "." + p.Arch + "-" + p.EVR() }
 
 type imageData struct {
 	pkgs    map[string]Pkg
-	files   map[string]string // path under a tracked prefix -> content identity
-	ignored map[string]string // path under a prefix but ignored/noise -> content identity (for the ignored-changes summary)
+	files   map[string]string
+	ignored map[string]string
+	owners  map[string]string // path -> package name
 }
 
 var (
@@ -94,29 +95,33 @@ func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise b
 	if err != nil {
 		return nil, err
 	}
-	pkgs := map[string]Pkg{}
+	d := &imageData{
+		pkgs: map[string]Pkg{}, files: files, ignored: ignored, owners: map[string]string{},
+	}
 	if dbPath != "" {
-		rpms, rerr := readRPM(dbPath)
+		rpms, owners, rerr := readRPM(dbPath)
 		if rerr != nil {
 			return nil, rerr
 		}
-		pkgs = rpms
+		d.pkgs, d.owners = rpms, owners
 	}
-	mergePkgText(pkgs, pkgText)
-	return &imageData{pkgs: pkgs, files: files, ignored: ignored}, nil
+	mergePkgText(d.pkgs, pkgText)
+	mergeOwners(d, pkgText)
+	return d, nil
 }
 
-func readRPM(dbPath string) (map[string]Pkg, error) {
+func readRPM(dbPath string) (map[string]Pkg, map[string]string, error) {
 	db, err := rpmdb.Open(dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("open db: %w", err)
+		return nil, nil, fmt.Errorf("open db: %w", err)
 	}
 	defer db.Close()
 	list, err := db.ListPackages()
 	if err != nil {
-		return nil, fmt.Errorf("list packages: %w", err)
+		return nil, nil, fmt.Errorf("list packages: %w", err)
 	}
 	pkgs := make(map[string]Pkg, len(list))
+	owners := map[string]string{}
 	for _, p := range list {
 		if p.Name == "gpg-pubkey" {
 			continue
@@ -127,8 +132,12 @@ func readRPM(dbPath string) (map[string]Pkg, error) {
 		}
 		pk := Pkg{Name: p.Name, Epoch: epoch, Version: p.Version, Release: p.Release, Arch: p.Arch}
 		pkgs[pk.nevraKey()] = pk
+		names, _ := p.InstalledFileNames()
+		for _, f := range names {
+			owners[strings.TrimPrefix(path.Clean(f), "/")] = p.Name
+		}
 	}
-	return pkgs, nil
+	return pkgs, owners, nil
 }
 
 func mergePkgText(pkgs map[string]Pkg, files map[string][]byte) {
@@ -144,8 +153,46 @@ func mergePkgText(pkgs map[string]Pkg, files map[string][]byte) {
 }
 
 func isPkgText(p string) bool {
-	_, ok := pkgTextParse(p, nil)
+	if _, ok := pkgTextParse(p, nil); ok {
+		return true
+	}
+	_, ok := dpkgListPkg(p)
 	return ok
+}
+
+func dpkgListPkg(p string) (string, bool) {
+	const pre = "var/lib/dpkg/info/"
+	if !strings.HasPrefix(p, pre) || !strings.HasSuffix(p, ".list") {
+		return "", false
+	}
+	base := strings.TrimSuffix(p[len(pre):], ".list")
+	if i := strings.IndexByte(base, ':'); i >= 0 {
+		base = base[:i]
+	}
+	return base, base != ""
+}
+
+func mergeOwners(d *imageData, pkgText map[string][]byte) {
+	if d.owners == nil {
+		d.owners = map[string]string{}
+	}
+	for p, body := range pkgText {
+		switch p {
+		case "lib/apk/db/installed", "usr/lib/apk/db/installed":
+			_, own := parseApkBoth(body)
+			for k, v := range own {
+				d.owners[k] = v
+			}
+		}
+		if pkg, ok := dpkgListPkg(p); ok {
+			for _, line := range strings.Split(string(body), "\n") {
+				line = strings.TrimPrefix(strings.TrimSpace(line), "/")
+				if line != "" {
+					d.owners[path.Clean(line)] = pkg
+				}
+			}
+		}
+	}
 }
 
 // scanLayers reads a flattened image tar, buffering rpm/apk/dpkg databases and
