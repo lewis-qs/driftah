@@ -28,11 +28,12 @@ const (
 )
 
 type Pkg struct {
-	Name    string
-	Epoch   string
-	Version string
-	Release string
-	Arch    string
+	Name      string
+	Epoch     string
+	Version   string
+	Release   string
+	Arch      string
+	Changelog string `json:"changelog,omitempty"`
 }
 
 func (p Pkg) EVR() string {
@@ -51,10 +52,11 @@ func (p Pkg) key() string { return p.Name + "." + p.Arch }
 func (p Pkg) nevraKey() string { return p.Name + "." + p.Arch + "-" + p.EVR() }
 
 type imageData struct {
-	pkgs    map[string]Pkg
-	files   map[string]string
-	ignored map[string]string
-	owners  map[string]string // path -> package name
+	pkgs       map[string]Pkg
+	files      map[string]string
+	ignored    map[string]string
+	owners     map[string]string // path -> package name
+	changelogs map[string]string // package name -> first changelog stanza
 }
 
 var (
@@ -96,7 +98,8 @@ func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise b
 		return nil, err
 	}
 	d := &imageData{
-		pkgs: map[string]Pkg{}, files: files, ignored: ignored, owners: map[string]string{},
+		pkgs: map[string]Pkg{}, files: files, ignored: ignored,
+		owners: map[string]string{}, changelogs: map[string]string{},
 	}
 	if dbPath != "" {
 		rpms, owners, rerr := readRPM(dbPath)
@@ -107,6 +110,8 @@ func readImage(ref, platformStr string, prefixes, ignore []string, filterNoise b
 	}
 	mergePkgText(d.pkgs, pkgText)
 	mergeOwners(d, pkgText)
+	mergeChangelogs(d, pkgText)
+	attachChangelogs(d)
 	return d, nil
 }
 
@@ -156,8 +161,77 @@ func isPkgText(p string) bool {
 	if _, ok := pkgTextParse(p, nil); ok {
 		return true
 	}
+	if _, ok := changelogPkg(p); ok {
+		return true
+	}
 	_, ok := dpkgListPkg(p)
 	return ok
+}
+
+func changelogPkg(p string) (string, bool) {
+	const pre = "usr/share/doc/"
+	if !strings.HasPrefix(p, pre) {
+		return "", false
+	}
+	rest := p[len(pre):]
+	i := strings.IndexByte(rest, '/')
+	if i < 1 {
+		return "", false
+	}
+	name, base := rest[:i], rest[i+1:]
+	switch base {
+	case "changelog.Debian.gz", "changelog.Debian", "changelog.gz", "changelog", "ChangeLog":
+		return name, true
+	}
+	return "", false
+}
+
+func mergeChangelogs(d *imageData, pkgText map[string][]byte) {
+	if d.changelogs == nil {
+		d.changelogs = map[string]string{}
+	}
+	for p, body := range pkgText {
+		pkg, ok := changelogPkg(p)
+		if !ok {
+			continue
+		}
+		if cl := firstChangelog(body); cl != "" {
+			d.changelogs[pkg] = cl
+		}
+	}
+}
+
+func attachChangelogs(d *imageData) {
+	for k, p := range d.pkgs {
+		if cl := d.changelogs[p.Name]; cl != "" {
+			p.Changelog = cl
+			d.pkgs[k] = p
+		}
+	}
+}
+
+func firstChangelog(b []byte) string {
+	if isGzip(b) {
+		plain, err := gunzip(b)
+		if err == nil {
+			b = plain
+		}
+	}
+	var out []string
+	for _, ln := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(ln, " -- ") && len(out) > 0 {
+			break
+		}
+		out = append(out, ln)
+		if len(out) >= 8 {
+			break
+		}
+	}
+	s := strings.TrimSpace(strings.Join(out, "\n"))
+	if len(s) > 1024 {
+		s = s[:1024]
+	}
+	return s
 }
 
 func dpkgListPkg(p string) (string, bool) {

@@ -137,12 +137,13 @@ func parseUKI(pe []byte, prefixes, ignore []string, filterNoise bool) (*imageDat
 		meta.Sections[name] = s
 	}
 
-	d := &imageData{pkgs: map[string]Pkg{}, files: map[string]string{}, ignored: map[string]string{}, owners: map[string]string{}}
+	d := &imageData{pkgs: map[string]Pkg{}, files: map[string]string{}, ignored: map[string]string{}, owners: map[string]string{}, changelogs: map[string]string{}}
 	if initrd := secs[".initrd"]; len(initrd) > 0 {
 		if err := walkInitrd(initrd, d, prefixes, ignore, filterNoise); err != nil {
 			return nil, nil, fmt.Errorf("initrd: %w", err)
 		}
 	}
+	attachChangelogs(d)
 	return d, meta, nil
 }
 
@@ -351,6 +352,7 @@ func recordCPIO(d *imageData, name string, mode int, body []byte, prefixes, igno
 	}
 	tryRPM(d, name, body)
 	mergeOwners(d, map[string][]byte{name: body})
+	mergeChangelogs(d, map[string][]byte{name: body})
 
 	under := hasAnyPrefix(name, prefixes)
 	tracked := under && !hasAnyPrefix(name, ignore)

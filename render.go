@@ -33,6 +33,11 @@ func renderMarkdown(rep Report, title, fromRef, toRef string) string {
 		fmt.Fprintf(&b, "### Updated packages (%d)\n\n", len(d.Updated))
 		for _, u := range d.Updated {
 			fmt.Fprintf(&b, "- **%s** %s → %s\n", mdCode(u.Name), mdCode(u.From), mdCode(u.To))
+			if u.Changelog != "" {
+				for _, ln := range strings.Split(u.Changelog, "\n") {
+					fmt.Fprintf(&b, "  %s\n", ln)
+				}
+			}
 		}
 		b.WriteString("\n")
 	}

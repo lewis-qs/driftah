@@ -164,6 +164,14 @@ func TestParseUKIInitrdAndApk(t *testing.T) {
 	}
 }
 
+func TestFirstChangelog(t *testing.T) {
+	raw := []byte("bash (5.3-1) unstable; urgency=medium\n\n  * New upstream.\n\n -- Maintainer <m@d>  Mon, 01 Jan 2024 00:00:00 +0000\n\nbash (5.2-1) unstable; urgency=medium\n")
+	got := firstChangelog(raw)
+	if !strings.Contains(got, "New upstream") || strings.Contains(got, "5.2-1") {
+		t.Fatalf("%q", got)
+	}
+}
+
 func TestParseUKIDpkg(t *testing.T) {
 	status := []byte("Package: apt\nStatus: install ok installed\nArchitecture: amd64\nVersion: 3.0.3\n\n")
 	pe := makePE(false,

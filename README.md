@@ -11,7 +11,8 @@ same way: PE sections, then the embedded initramfs.
 
 It reports:
 
-- **Packages** added, updated, or removed (rpm, apk, or deb).
+- **Packages** added, updated, or removed (rpm, apk, or deb), with a changelog
+  stanza when the image ships one.
 - **Files** added, modified, or removed under configurable path prefixes
   (git-style `A` / `M` / `R`), with the owning package when known.
 - **UKI** cmdline, os-release, and section hashes (`.linux`, `.initrd`, `.osrel`,
