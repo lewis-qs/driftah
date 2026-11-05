@@ -32,21 +32,4 @@ runs:
         FROM: ${{ inputs.from }}
         TO: ${{ inputs.to }}
         ARGS: ${{ inputs.args }}
-      run: |
-        set -euo pipefail
-        auth=""
-        if [ -n "${REGISTRY_AUTH_FILE:-}" ] && [ -f "${REGISTRY_AUTH_FILE}" ]; then
-          auth="${REGISTRY_AUTH_FILE}"
-        elif [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -f "${XDG_RUNTIME_DIR}/containers/auth.json" ]; then
-          auth="${XDG_RUNTIME_DIR}/containers/auth.json"
-        fi
-        mount=()
-        [ -n "$auth" ] && mount=(-v "$auth:/tmp/auth.json:ro" -e REGISTRY_AUTH_FILE=/tmp/auth.json)
-        notes="$(podman run --rm "${mount[@]}" "$DRIFTAH_IMAGE" $ARGS "$FROM" "$TO")"
-        delim="driftah_$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-        case "$notes" in *"$delim"*) echo "::error::notes delimiter collision"; exit 1;; esac
-        {
-          echo "notes<<$delim"
-          printf '%s\n' "$notes"
-          echo "$delim"
-        } >> "$GITHUB_OUTPUT"
+      run: "$GITHUB_ACTION_PATH/driftah-run.sh"

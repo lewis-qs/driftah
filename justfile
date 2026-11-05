@@ -60,9 +60,14 @@ integration:
     podman run --rm -v "{{ root }}:/src:z" -w /src -e CGO_ENABLED=0 {{ go_image }} \
         bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rpm2cpio cpio >/dev/null && go test -tags integration -run TestIntegration -v ./...'
 
+# test the composite action's local-file handling (stubs podman; no container)
+[group('ci')]
+action-test:
+    bash driftah-run_test.sh
+
 # fmt-check + lint + vuln + test (lint's govet covers vet)
 [group('ci')]
-check: fmt-check lint vuln test
+check: fmt-check lint vuln test action-test
 
 # lint commit messages in a range (CI passes the PR base/head shas)
 [group('ci')]
