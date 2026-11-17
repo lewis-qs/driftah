@@ -1,6 +1,6 @@
 module github.com/lewis-qs/driftah
 
-go 1.26
+go 1.27
 
 require (
 	github.com/glebarez/go-sqlite v1.20.3
