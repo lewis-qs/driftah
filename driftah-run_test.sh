@@ -20,6 +20,7 @@ chmod +x "$tmp/podman"
 export PATH="$tmp:$PATH"
 export PODMAN_ARGV="$tmp/argv"
 export DRIFTAH_IMAGE="img@sha256:dead"
+export RUNNER_TEMP="$tmp"
 
 # Run driftah-run.sh in a clean env for each case. Usage: run_case FROM TO [ARGS]
 # Honours PODMAN_EXIT / PODMAN_OUT from the caller. Captures exit code in RC,
@@ -49,6 +50,14 @@ grep -qxF -- "ghcr.io/x/y:tag"                 <<<"$ARGV" || fail "registry TO n
 grep -qxF -- "--short-versions"                <<<"$ARGV" || fail "extra args dropped"
 grep -q   -- "ghcr.io" <<<"$(grep -A1 -- '^-v$' <<<"$ARGV")" && fail "registry ref wrongly mounted"
 grep -qF  -- "fake notes" <<<"$GHOUT"                     || fail "notes not captured"
+nf="$(sed -n 's/^notes_file=//p' <<<"$GHOUT")"
+[ "$(dirname "$nf")" = "$tmp" ] && [ "$(cat "$nf")" = "fake notes" ] || fail "notes_file missing or wrong"
+mkdir -p "$tmp/fallback"
+RUNNER_TEMP="$tmp/missing" TMPDIR="$tmp/fallback" run_case "$tmp/disk.img" "ghcr.io/x/y:tag"
+[ "$RC" = 0 ] && [ -f "$(sed -n 's/^notes_file=//p' <<<"$GHOUT")" ] || fail "notes_file did not fall back to TMPDIR"
+RUNNER_TEMP="$tmp/missing" TMPDIR="$tmp/missing" run_case "$tmp/disk.img" "ghcr.io/x/y:tag"
+if ! { [ "$RC" = 0 ] && grep -qF -- "fake notes" <<<"$GHOUT" && ! grep -q '^notes_file=' <<<"$GHOUT" \
+  && grep -qF -- "::warning::could not create a notes file" <<<"$OUT"; }; then fail "an uncreatable notes file lost the notes output"; fi
 
 # 2. symlink keeps its own name (so driftah still sees a .img), mounts the target.
 ln -s disk.img "$tmp/link.img"
@@ -82,5 +91,6 @@ PODMAN_EXIT=7 run_case "ghcr.io/x/y:a" "ghcr.io/x/y:b"
 PODMAN_OUT="" run_case "ghcr.io/x/y:a" "ghcr.io/x/y:b"
 [ "$RC" = 0 ] || fail "empty output should still succeed"
 grep -qF -- "::warning::" <<<"$OUT" || fail "empty output gave no ::warning::"
+[ ! -s "$(sed -n 's/^notes_file=//p' <<<"$GHOUT")" ] || fail "empty output gave a non-empty notes_file"
 
 echo "PASS"

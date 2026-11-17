@@ -92,3 +92,14 @@ case "$notes" in *"$delim"*) echo "::error::notes delimiter collision"; exit 1 ;
   printf '%s\n' "$notes"
   echo "$delim"
 } >> "$GITHUB_OUTPUT"
+
+# The same notes as a file, for diffs too large to pass through an env var (128 KiB).
+# Best effort: a failure here must not lose the notes output above.
+dir="${RUNNER_TEMP:-}"
+[ -d "$dir" ] || dir="${TMPDIR:-/tmp}"
+if notes_file="$(mktemp "$dir/driftah-notes.XXXXXX")"; then
+  [ -z "$notes" ] || printf '%s\n' "$notes" > "$notes_file"
+  echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
+else
+  echo "::warning::could not create a notes file in $dir; only the notes output is set"
+fi

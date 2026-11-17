@@ -108,13 +108,17 @@ podman run --rm \
     to: ghcr.io/lewis-qs/bootc/almalinux:10.2-20260820
     args: --ignore-packages kernel
 - env:
-    NOTES: ${{ steps.notes.outputs.notes }}
-  run: gh release create "$VERSION" --notes "$NOTES"
+    NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+  run: gh release create "$VERSION" --notes-file "$NOTES_FILE"
 ```
 
-The markdown is the `notes` output; pass it through `env:` rather than
-interpolating it into a `run:` line. `from` / `to` can also be a UKI or disk
-image if those files are available to the action's `podman run`.
+The markdown is the `notes` output, and also the file at `notes_file`. Prefer
+`notes_file`: a large diff overflows the 128 KiB limit on one environment
+variable, so passing `notes` through `env:` fails with "Argument list too long".
+`notes_file` is a path on the runner, so it only works in the same job; upload
+it as an artifact to use it elsewhere. If you do use `notes`, pass it through
+`env:` rather than interpolating it into a `run:` line. `from` / `to` can also
+be a UKI or disk image if those files are available to the action's `podman run`.
 
 ### Example output
 
