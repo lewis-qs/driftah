@@ -1,4 +1,4 @@
-FROM docker.io/library/golang:1.26 AS build
+FROM docker.io/library/golang:1.27 AS build
 ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
