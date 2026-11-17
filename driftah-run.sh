@@ -82,6 +82,12 @@ if [ -z "${notes//[$' \t\n']/}" ]; then
   echo "::warning::driftah produced no output (either no differences, or a problem that still exited 0)"
 fi
 
+# Also write the notes to a file: a large diff overflows the 128 KiB limit on a
+# single environment variable, so a consumer that passes `notes` through env:
+# fails with "Argument list too long". notes_file avoids that.
+notes_file="$(mktemp --suffix=.md "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/driftah-notes.XXXXXX")"
+printf '%s\n' "$notes" > "$notes_file"
+
 delim="driftah_$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 case "$notes" in *"$delim"*) echo "::error::notes delimiter collision"; exit 1 ;; esac
 # GITHUB_OUTPUT is required: no /dev/stdout fallback, so that running outside a
@@ -91,4 +97,5 @@ case "$notes" in *"$delim"*) echo "::error::notes delimiter collision"; exit 1 ;
   echo "notes<<$delim"
   printf '%s\n' "$notes"
   echo "$delim"
+  echo "notes_file=$notes_file"
 } >> "$GITHUB_OUTPUT"

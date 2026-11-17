@@ -20,6 +20,7 @@ chmod +x "$tmp/podman"
 export PATH="$tmp:$PATH"
 export PODMAN_ARGV="$tmp/argv"
 export DRIFTAH_IMAGE="img@sha256:dead"
+export RUNNER_TEMP="$tmp"
 
 # Run driftah-run.sh in a clean env for each case. Usage: run_case FROM TO [ARGS]
 # Honours PODMAN_EXIT / PODMAN_OUT from the caller. Captures exit code in RC,
@@ -49,6 +50,8 @@ grep -qxF -- "ghcr.io/x/y:tag"                 <<<"$ARGV" || fail "registry TO n
 grep -qxF -- "--short-versions"                <<<"$ARGV" || fail "extra args dropped"
 grep -q   -- "ghcr.io" <<<"$(grep -A1 -- '^-v$' <<<"$ARGV")" && fail "registry ref wrongly mounted"
 grep -qF  -- "fake notes" <<<"$GHOUT"                     || fail "notes not captured"
+nf="$(sed -n 's/^notes_file=//p' <<<"$GHOUT")"
+[ -f "$nf" ] && [ "$(cat "$nf")" = "fake notes" ]       || fail "notes_file missing or wrong"
 
 # 2. symlink keeps its own name (so driftah still sees a .img), mounts the target.
 ln -s disk.img "$tmp/link.img"

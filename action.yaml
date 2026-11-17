@@ -21,6 +21,9 @@ outputs:
   notes:
     description: The generated markdown release notes.
     value: ${{ steps.run.outputs.notes }}
+  notes_file:
+    description: Path to a file holding the same notes. Use it for large diffs, which overflow an env var.
+    value: ${{ steps.run.outputs.notes_file }}
 
 runs:
   using: composite
